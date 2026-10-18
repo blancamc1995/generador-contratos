@@ -4,6 +4,6 @@
 set -e
 cd "$(dirname "$0")"
 V=$(date +%Y%m%d%H%M)
-npx --yes esbuild js/app.js --bundle --format=esm --target=es2022 --outfile=js/app.bundle.js
+$( [ -x /opt/npm-tools/node_modules/.bin/esbuild ] && echo /opt/npm-tools/node_modules/.bin/esbuild || echo "npx --yes esbuild" ) js/app.js --bundle --format=esm --target=es2022 --outfile=js/app.bundle.js
 sed -i -E "s#js/app\.bundle\.js\?v=[0-9]+#js/app.bundle.js?v=$V#; s#css/styles\.css\?v=[0-9]+#css/styles.css?v=$V#" index.html
 echo "Versión $V lista"

@@ -835,8 +835,9 @@ async function elegir(tipo = "carpeta") {
           return;
         }
         lista.innerHTML = files.map((f) => `<button type="button" class="tarjeta" data-id="${f.id}" style="border:1px solid var(--borde);text-align:left;font:inherit;color:inherit;cursor:pointer">
-            <div class="nombre">${f.name.replace(/</g, "&lt;")}</div>
-            <div class="meta">Modificado el ${new Date(f.modifiedTime).toLocaleDateString("es-ES")}</div></button>`).join("");
+            <div class="fila"><div><div class="nombre">${f.name.replace(/</g, "&lt;")}</div>
+            <div class="meta">Modificado el ${new Date(f.modifiedTime).toLocaleDateString("es-ES")}</div></div>
+            <span class="chip ok">Elegir</span></div></button>`).join("");
         lista.querySelectorAll("[data-id]").forEach((b) => b.onclick = () => cerrar({ id: b.dataset.id, name: b.querySelector(".nombre").textContent }));
       } catch (e) {
         lista.innerHTML = `<p class="ayuda" style="color:#A2321F">No se pudo buscar en Drive (${e.message}).</p>`;
@@ -2067,7 +2068,7 @@ async function vistaAjustes() {
       ${campo("Ciudad de firma por defecto", "ciudadFirma", a.ciudadFirma)}
       <div class="eti-campo">Carpeta \xABRentas\xBB de Google Drive</div>
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin elegir")}</div>
-        <div class="meta">Cada contrato se guarda en Renta AAAA / Piso, en todos los a\xF1os que abarca</div></div>
+        <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
         <button type="button" class="btn secundario" id="elegir">Elegir</button></div></div>
       <input type="hidden" name="carpetaDriveId" value="${esc(a.carpetaDriveId || "")}">
       <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}">
@@ -2086,6 +2087,7 @@ async function vistaAjustes() {
       f.carpetaDriveId.value = r.id;
       f.carpetaDriveNombre.value = r.name;
       $("#carpeta-nombre").textContent = r.name;
+      aviso(`Carpeta \xAB${r.name}\xBB elegida. Pulsa Guardar.`);
     } catch (e) {
       aviso("Drive: " + e.message, true);
     }
