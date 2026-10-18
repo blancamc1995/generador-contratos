@@ -1,0 +1,88 @@
+rules_version = '2';
+
+// Reglas de seguridad. Pégalas en Firebase → Firestore Database → Reglas,
+// sustituyendo los dos emails. No hace falta subir los emails reales a GitHub.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function propietario() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in [
+          'EMAIL_DE_BLANCA@gmail.com',
+          'EMAIL_DE_MANU@gmail.com'
+        ];
+    }
+
+    function texto(v, max) { return v is string && v.size() <= max; }
+
+    function persona(p) {
+      return p is map
+        && texto(p.tratamiento, 5) && texto(p.nombre, 120)
+        && texto(p.tipoDoc, 12) && texto(p.numDoc, 30)
+        && (!('parentesco' in p) || texto(p.parentesco, 40));
+    }
+
+    // Los propietarios pueden leer y escribir todo.
+    match /{document=**} {
+      allow read, write: if propietario();
+    }
+
+    // Contratos enviados a firmar: quien tiene el enlace puede leerlos y
+    // firmar SU parte una sola vez. Los arrendadores firman con su sesión.
+    match /contratos/{cid} {
+      allow get: if resource.data.estado in ['firmando', 'firmado'];
+
+      function contrato() { return get(/databases/$(database)/documents/contratos/$(cid)).data; }
+
+      // La imagen de cada firma: solo la ven los arrendadores, y el inquilino
+      // únicamente cuando le habilitáis su copia firmada.
+      match /firmas/{fid} {
+        allow read: if contrato().get('copiaHabilitada', false) == true;
+        allow create: if contrato().estado == 'firmando'
+          && fid in contrato().firmantesIds
+          && !fid.matches('arr[0-9]+')
+          && request.resource.data.keys().hasOnly(['nombre', 'numDoc', 'rol', 'imagen', 'huella',
+               'aceptado', 'firmadoEl', 'dispositivo'])
+          && request.resource.data.huella == contrato().huella
+          && request.resource.data.aceptado == true
+          && request.resource.data.firmadoEl == request.time
+          && texto(request.resource.data.imagen, 300000)
+          && request.resource.data.imagen.matches('data:image/png;base64,.*')
+          && texto(request.resource.data.dispositivo, 200);
+      }
+
+      // Quién ha firmado y cuándo (sin imagen), para mostrar el progreso.
+      match /estados/{fid} {
+        allow read: if contrato().estado in ['firmando', 'firmado'];
+        allow create: if contrato().estado == 'firmando'
+          && !fid.matches('arr[0-9]+')
+          && exists(/databases/$(database)/documents/contratos/$(cid)/firmas/$(fid))
+          && request.resource.data.keys().hasOnly(['nombre', 'rol', 'firmadoEl'])
+          && request.resource.data.firmadoEl == request.time;
+      }
+    }
+
+    match /invitaciones/{token} {
+      // El inquilino solo puede abrir SU invitación conociendo el enlace
+      // (no puede listar las demás).
+      allow get: if true;
+
+      // Y solo puede añadir sus datos mientras el enlace esté abierto.
+      // Nunca puede leer lo que han enviado otros.
+      match /respuestas/{id} {
+        allow create: if get(/databases/$(database)/documents/invitaciones/$(token)).data.estado == 'abierta'
+          && request.resource.data.keys().hasOnly(['tratamiento', 'nombre', 'tipoDoc', 'numDoc', 'domicilio',
+               'telefono', 'email', 'avales', 'consentimiento', 'enviada'])
+          && persona(request.resource.data)
+          && texto(request.resource.data.domicilio, 250)
+          && texto(request.resource.data.telefono, 30)
+          && texto(request.resource.data.email, 120)
+          && request.resource.data.consentimiento == true
+          && request.resource.data.enviada == request.time
+          && request.resource.data.avales is list
+          && request.resource.data.avales.size() <= 6;
+      }
+    }
+  }
+}
