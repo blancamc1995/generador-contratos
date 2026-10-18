@@ -6,7 +6,7 @@ import { CONFIG } from "./firebase-config.js";
 
 export const DEMO = String(CONFIG.firebase.apiKey).startsWith("PEGAR") || new URLSearchParams(location.search).has("demo");
 
-const V = "10.12.2";
+const V = "13.0.0";
 let api;
 
 if (!DEMO) {
