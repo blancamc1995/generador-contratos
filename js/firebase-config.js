@@ -14,7 +14,7 @@ export const CONFIG = {
 
   // ID de cliente OAuth "Web client (auto created by Google Service)"
   // de Google Cloud → APIs y servicios → Credenciales.
-  googleClientId: "PEGAR_AQUI.apps.googleusercontent.com",
+  googleClientId: "221718655510-vncb0h6rbu7fpe4k1grva7j07f9v5oir.apps.googleusercontent.com",
 
   // Número del proyecto (Configuración del proyecto en Firebase → General).
   googleProjectNumber: "221718655510",
