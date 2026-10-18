@@ -1171,7 +1171,8 @@ async function vistaAjustes() {
       if (!r) return;
       f.carpetaDriveId.value = r.id; f.carpetaDriveNombre.value = r.name;
       $("#carpeta-nombre").textContent = r.name;
-      aviso(`Carpeta «${r.name}» elegida. Pulsa Guardar.`);
+      await setDoc(doc(db, "ajustes", "general"), { carpetaDriveId: r.id, carpetaDriveNombre: r.name }, { merge: true });
+      aviso(`Carpeta «${r.name}» guardada`);
     } catch (e) { aviso("Drive: " + e.message, true); }
   };
   $("#guardar").onclick = async () => {

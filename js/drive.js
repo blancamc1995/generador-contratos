@@ -71,14 +71,19 @@ export async function elegir(tipo = "carpeta") {
     capa.innerHTML = `<div style="background:var(--fondo);width:100%;max-width:560px;max-height:85vh;border-radius:22px 22px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px">
         <div class="fila"><h2 style="font-size:21px">${esCarpeta ? "Elige la carpeta" : "Elige el PDF de fotos"}</h2>
           <button type="button" class="btn peligro" data-cerrar style="min-height:40px">Cancelar</button></div>
-        <label class="campo">Buscar en tu Drive<input data-q value="${esCarpeta ? "Rentas" : ""}" placeholder="${esCarpeta ? "Nombre de la carpeta" : "Nombre del PDF"}"></label>
+        <label class="campo">Buscar en tu Drive<input data-q value="${esCarpeta ? "Rentas" : ""}" enterkeyhint="search" placeholder="${esCarpeta ? "Nombre de la carpeta" : "Nombre del PDF"}"></label>
         <div data-lista style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:120px"></div>
       </div>`;
     document.body.appendChild(capa);
-    const cerrar = (r) => { capa.remove(); ok(r); };
+    let cerrado = false;
+    const cerrar = (r) => { if (cerrado) return; cerrado = true; capa.remove(); ok(r); };
     capa.querySelector("[data-cerrar]").onclick = () => cerrar(null);
     capa.addEventListener("click", (e) => { if (e.target === capa) cerrar(null); });
     const lista = capa.querySelector("[data-lista]");
+    lista.addEventListener("pointerup", (e) => {
+      const b = e.target.closest("[data-id]");
+      if (b) cerrar({ id: b.dataset.id, name: b.querySelector(".nombre").textContent });
+    });
     const input = capa.querySelector("[data-q]");
     let espera;
     const buscar = async () => {
@@ -95,6 +100,7 @@ export async function elegir(tipo = "carpeta") {
             <div class="meta">Modificado el ${new Date(f.modifiedTime).toLocaleDateString("es-ES")}</div></div>
             <span class="chip ok">Elegir</span></div></button>`).join("");
         lista.querySelectorAll("[data-id]").forEach(b => (b.onclick = () => cerrar({ id: b.dataset.id, name: b.querySelector(".nombre").textContent })));
+        if (document.activeElement === input) input.blur();
       } catch (e) {
         lista.innerHTML = `<p class="ayuda" style="color:#A2321F">No se pudo buscar en Drive (${e.message}).</p>`;
       }
