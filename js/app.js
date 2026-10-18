@@ -54,7 +54,7 @@ function nuevoToken() {
 }
 
 function slug(s) {
-  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "");
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "");
 }
 
 function cursoDe(inv) {

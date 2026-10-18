@@ -53,33 +53,53 @@ const COMUNES = "supportsAllDrives=true&includeItemsFromAllDrives=true";
 
 /** "Maestro Priego López " ≈ "maestro priego" (sin tildes, mayúsculas ni espacios). */
 export function normalizar(s) {
-  return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Selector de Google para elegir una carpeta o un PDF. Devuelve {id, name} o null. */
+/**
+ * Buscador propio (sin el selector de Google, que exige una clave aparte):
+ * lista carpetas o PDF de tu Drive por nombre y deja elegir uno.
+ * Devuelve {id, name} o null.
+ */
 export async function elegir(tipo = "carpeta") {
   if (DEMO) return tipo === "carpeta" ? { id: "demo-rentas", name: "Rentas (demo)" } : { id: "demo-fotos", name: "Fotos del piso (demo).pdf" };
-  const t = await obtenerToken();
-  await esperar(() => window.gapi);
-  await new Promise(ok => gapi.load("picker", ok));
-  return new Promise(ok => {
-    const P = google.picker;
-    const vista = tipo === "carpeta"
-      ? new P.DocsView(P.ViewId.FOLDERS).setSelectFolderEnabled(true).setIncludeFolders(true)
-      : new P.DocsView(P.ViewId.DOCS).setMimeTypes("application/pdf").setIncludeFolders(true);
-    new P.PickerBuilder()
-      .setOAuthToken(t)
-      .setDeveloperKey(CONFIG.firebase.apiKey)
-      .setAppId(CONFIG.googleProjectNumber)
-      .addView(vista)
-      .setLocale("es")
-      .setTitle(tipo === "carpeta" ? "Elige la carpeta Rentas" : "Elige el PDF de fotos")
-      .setCallback(d => {
-        if (d.action === P.Action.PICKED) ok({ id: d.docs[0].id, name: d.docs[0].name });
-        else if (d.action === P.Action.CANCEL) ok(null);
-      })
-      .build()
-      .setVisible(true);
+  await obtenerToken();
+  const esCarpeta = tipo === "carpeta";
+  return new Promise((ok) => {
+    const capa = document.createElement("div");
+    capa.style.cssText = "position:fixed;inset:0;z-index:50;background:rgba(43,31,28,.45);display:flex;align-items:flex-end;justify-content:center";
+    capa.innerHTML = `<div style="background:var(--fondo);width:100%;max-width:560px;max-height:85vh;border-radius:22px 22px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px">
+        <div class="fila"><h2 style="font-size:21px">${esCarpeta ? "Elige la carpeta" : "Elige el PDF de fotos"}</h2>
+          <button type="button" class="btn peligro" data-cerrar style="min-height:40px">Cancelar</button></div>
+        <label class="campo">Buscar en tu Drive<input data-q value="${esCarpeta ? "Rentas" : ""}" placeholder="${esCarpeta ? "Nombre de la carpeta" : "Nombre del PDF"}"></label>
+        <div data-lista style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:120px"></div>
+      </div>`;
+    document.body.appendChild(capa);
+    const cerrar = (r) => { capa.remove(); ok(r); };
+    capa.querySelector("[data-cerrar]").onclick = () => cerrar(null);
+    capa.addEventListener("click", (e) => { if (e.target === capa) cerrar(null); });
+    const lista = capa.querySelector("[data-lista]");
+    const input = capa.querySelector("[data-q]");
+    let espera;
+    const buscar = async () => {
+      const texto = input.value.trim().replace(/'/g, "\\'");
+      lista.innerHTML = '<p class="ayuda">Buscando…</p>';
+      const filtro = esCarpeta ? "mimeType='application/vnd.google-apps.folder'" : "mimeType='application/pdf'";
+      const q = encodeURIComponent(`${filtro} and trashed=false${texto ? ` and name contains '${texto}'` : ""}`);
+      try {
+        const r = await api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=30&${COMUNES}`);
+        const { files } = await r.json();
+        if (!files.length) { lista.innerHTML = '<p class="ayuda">No hay resultados con ese nombre.</p>'; return; }
+        lista.innerHTML = files.map(f => `<button type="button" class="tarjeta" data-id="${f.id}" style="border:1px solid var(--borde);text-align:left;font:inherit;color:inherit;cursor:pointer">
+            <div class="nombre">${f.name.replace(/</g, "&lt;")}</div>
+            <div class="meta">Modificado el ${new Date(f.modifiedTime).toLocaleDateString("es-ES")}</div></button>`).join("");
+        lista.querySelectorAll("[data-id]").forEach(b => (b.onclick = () => cerrar({ id: b.dataset.id, name: b.querySelector(".nombre").textContent })));
+      } catch (e) {
+        lista.innerHTML = `<p class="ayuda" style="color:#A2321F">No se pudo buscar en Drive (${e.message}).</p>`;
+      }
+    };
+    input.addEventListener("input", () => { clearTimeout(espera); espera = setTimeout(buscar, 350); });
+    buscar();
   });
 }
 
