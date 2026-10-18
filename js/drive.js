@@ -91,8 +91,9 @@ export async function elegir(tipo = "carpeta") {
         const { files } = await r.json();
         if (!files.length) { lista.innerHTML = '<p class="ayuda">No hay resultados con ese nombre.</p>'; return; }
         lista.innerHTML = files.map(f => `<button type="button" class="tarjeta" data-id="${f.id}" style="border:1px solid var(--borde);text-align:left;font:inherit;color:inherit;cursor:pointer">
-            <div class="nombre">${f.name.replace(/</g, "&lt;")}</div>
-            <div class="meta">Modificado el ${new Date(f.modifiedTime).toLocaleDateString("es-ES")}</div></button>`).join("");
+            <div class="fila"><div><div class="nombre">${f.name.replace(/</g, "&lt;")}</div>
+            <div class="meta">Modificado el ${new Date(f.modifiedTime).toLocaleDateString("es-ES")}</div></div>
+            <span class="chip ok">Elegir</span></div></button>`).join("");
         lista.querySelectorAll("[data-id]").forEach(b => (b.onclick = () => cerrar({ id: b.dataset.id, name: b.querySelector(".nombre").textContent })));
       } catch (e) {
         lista.innerHTML = `<p class="ayuda" style="color:#A2321F">No se pudo buscar en Drive (${e.message}).</p>`;

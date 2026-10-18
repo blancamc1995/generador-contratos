@@ -1153,7 +1153,7 @@ async function vistaAjustes() {
       ${campo("Ciudad de firma por defecto", "ciudadFirma", a.ciudadFirma)}
       <div class="eti-campo">Carpeta «Rentas» de Google Drive</div>
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin elegir")}</div>
-        <div class="meta">Cada contrato se guarda en Renta AAAA / Piso, en todos los años que abarca</div></div>
+        <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
         <button type="button" class="btn secundario" id="elegir">Elegir</button></div></div>
       <input type="hidden" name="carpetaDriveId" value="${esc(a.carpetaDriveId || "")}">
       <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}">
@@ -1171,6 +1171,7 @@ async function vistaAjustes() {
       if (!r) return;
       f.carpetaDriveId.value = r.id; f.carpetaDriveNombre.value = r.name;
       $("#carpeta-nombre").textContent = r.name;
+      aviso(`Carpeta «${r.name}» elegida. Pulsa Guardar.`);
     } catch (e) { aviso("Drive: " + e.message, true); }
   };
   $("#guardar").onclick = async () => {
