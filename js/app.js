@@ -2,7 +2,7 @@ import { CONFIG } from "./firebase-config.js";
 import { DEMO, auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut,
   doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, orderBy, where,
   serverTimestamp, arrayUnion } from "./datos.js";
-import { generarContrato, firmantesDe, fechaLarga, euros, MESES } from "./contratos.js";
+import { generarContrato, firmantesDe, fechaLarga, euros, MESES, renumerar } from "./contratos.js";
 import { construirPdf, descargar } from "./pdf.js";
 import * as drive from "./drive.js";
 import { D, C, CID, fijarCuenta, resolverCuenta, leerCuenta, invitarMiembro, quitarMiembro, cuentaDeEnlace } from "./cuenta.js";
@@ -704,6 +704,7 @@ function datosContrato(inv, grupo, ajustes, fechaFirma, piso, conFotos) {
     plantilla: inv.plantilla,
     ciudadFirma: inv.ciudad || ajustes.ciudadFirma || "",
     condiciones: ajustes.condiciones || {},
+    cambiosModelo: ajustes.modelos?.[inv.plantilla] || [],
     fechaFirma,
     propietarios: ajustes.propietarios,
     domicilioPropietarios: ajustes.domicilio,
@@ -839,12 +840,137 @@ async function vistaContratos() {
       || '<div class="vacio">Aún no hay contratos.</div>'}</div>`, "contratos");
 }
 
+
+// ============ editar el texto de un contrato ============
+
+const TIPOS_EDITABLES = ["title", "subtitle", "heading", "subheading", "p"];
+
+async function vistaEditar(id) {
+  const s = await getDoc(D("contratos", id));
+  if (!s.exists()) return pintar(cabVolver("Contrato no encontrado", "", "#/contratos"), "contratos");
+  const c = s.data();
+  if (c.estado !== "generado") { location.hash = `#/contrato/${id}`; return; }
+  const original = generarContrato(c.datos);
+  // Cada elemento recuerda de qué párrafo del modelo viene (o null si es nuevo).
+  let items = (c.bloques?.length ? c.bloques : original).map((b, i) => ({ ...b, orig: c.bloques?.length ? (b.orig ?? null) : i }));
+  const fijos = items.filter(b => !TIPOS_EDITABLES.includes(b.type));
+  items = items.filter(b => TIPOS_EDITABLES.includes(b.type));
+  const NOMBRE = { title: "Título", subtitle: "Subtítulo", heading: "Apartado", subheading: "Cláusula", p: "Párrafo" };
+
+  const pintarEditor = () => {
+    pintar(`${cabVolver("Editar el contrato", c.inquilinos?.join(", ") || "", `#/contrato/${id}`)}
+      <div class="seccion">
+        <p class="ayuda">Cambia cualquier texto, quita párrafos o añade nuevos. Las cláusulas se vuelven a numerar solas. Los cambios se ven en el PDF y en lo que firma el inquilino.</p>
+        ${items.map((b, i) => `<div class="tarjeta" style="gap:8px;${b.orig === null ? "border:1.5px dashed var(--terracota)" : ""}">
+            <div class="fila"><span class="eti-campo">${NOMBRE[b.type]}${b.orig === null ? " · nuevo" : ""}</span>
+              <button type="button" class="btn peligro" data-quitar="${i}" style="min-height:32px;font-size:13px">Quitar</button></div>
+            <textarea data-i="${i}" rows="${Math.min(14, Math.max(2, Math.ceil(b.text.length / 42)))}" style="font-family:var(--sans);font-size:15px;line-height:1.5;border:1px solid var(--borde);border-radius:12px;padding:10px 12px;width:100%;${b.type !== "p" ? "font-weight:600;" : ""}">${esc(b.text)}</textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="p" style="min-height:36px;flex:1">+ Párrafo debajo</button>
+              <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="subheading" style="min-height:36px;flex:1">+ Cláusula debajo</button>
+            </div></div>`).join("")}
+        <label class="check"><input type="checkbox" id="al-modelo">
+          <span>Guardar también estos cambios en mi modelo de «${esc(PLANTILLAS[c.plantilla] || "")}» para los próximos contratos. Solo se aplican a los párrafos fijos; los que llevan nombres, importes o fechas se cambian solo en este contrato.</span></label>
+      </div>
+      <div class="acciones">
+        <button class="btn primario ancho" id="guardar">Guardar cambios</button>
+        <div class="dos"><a class="btn secundario" href="#/contrato/${id}">Cancelar</a>
+          <button class="btn secundario" id="restaurar">Volver al texto original</button></div>
+      </div>`, "contratos");
+    $$("textarea[data-i]").forEach(t => t.addEventListener("input", () => { items[+t.dataset.i].text = t.value; }));
+    $$("[data-quitar]").forEach(b => (b.onclick = () => { items.splice(+b.dataset.quitar, 1); pintarEditor(); }));
+    $$("[data-mas]").forEach(b => (b.onclick = () => {
+      const i = +b.dataset.mas;
+      const nuevo = b.dataset.tipo === "subheading" ? { type: "subheading", text: "NUEVA. Título de la cláusula.", orig: null } : { type: "p", text: "", orig: null };
+      items.splice(i + 1, 0, nuevo);
+      if (b.dataset.tipo === "subheading") items.splice(i + 2, 0, { type: "p", text: "", orig: null });
+      pintarEditor();
+      const t = $(`textarea[data-i="${i + 1}"]`); if (t) { t.focus(); t.select(); }
+    }));
+    $("#restaurar").onclick = async () => {
+      if (!preguntar("¿Descartar todos los cambios de este contrato?")) return;
+      await updateDoc(D("contratos", id), { bloques: [] });
+      aviso("Texto original restaurado");
+      location.hash = `#/contrato/${id}`;
+    };
+    $("#guardar").onclick = async () => {
+      const limpios = items.map(b => ({ ...b, text: b.text.trim() })).filter(b => b.text);
+      // Reconstruir el contrato completo: textos editados + firmas y anexo al final, en su sitio.
+      const firmasBloque = fijos.find(b => b.type === "signatures");
+      const anexo = fijos.find(b => b.type === "annex");
+      let final = renumerar(limpios.map(({ type, text, orig }) => ({ type, text, orig })));
+      if (firmasBloque) final.push(firmasBloque);
+      if (anexo) final.push(anexo);
+      await updateDoc(D("contratos", id), { bloques: final, editadoEl: serverTimestamp(), editadoPor: usuario.email });
+      if ($("#al-modelo").checked) {
+        const cambios = cambiosRespectoAlModelo(original, limpios, c.datos);
+        if (cambios.length) {
+          const a = await leerAjustes();
+          const modelos = { ...(a.modelos || {}) };
+          modelos[c.plantilla] = [...(modelos[c.plantilla] || []), ...cambios];
+          await setDoc(D("ajustes", "general"), { modelos }, { merge: true });
+        }
+        aviso(cambios.length ? `Guardado. ${cambios.length} cambio(s) añadidos a tu modelo` : "Guardado en este contrato");
+      } else aviso("Cambios guardados");
+      location.hash = `#/contrato/${id}`;
+    };
+  };
+  pintarEditor();
+}
+
+/** Los mismos datos con nombres, importes y fechas distintos, para saber qué párrafos son fijos. */
+function datosAlternos(d) {
+  const x = JSON.parse(JSON.stringify(d));
+  const cambia = (o, k) => { if (o && o[k]) o[k] = String(o[k]) + " Ω"; };
+  const mas1 = (o, k) => { if (o && o[k] !== undefined && o[k] !== "") o[k] = String((parseFloat(String(o[k]).replace(",", ".")) || 0) + 1); };
+  const año = (o, k) => { if (o?.[k]) o[k] = String(parseInt(o[k].slice(0, 4), 10) + 3) + o[k].slice(4); };
+  (x.inquilinos || []).forEach(i => { ["nombre", "numDoc", "domicilio"].forEach(k => cambia(i, k)); (i.avales || []).forEach(a => ["nombre", "numDoc", "parentesco"].forEach(k => cambia(a, k))); });
+  (x.propietarios || []).forEach(o => ["nombre", "numDoc"].forEach(k => cambia(o, k)));
+  ["nombre", "direccion", "descripcion"].forEach(k => cambia(x.piso, k));
+  ["habitacion", "iban", "domicilioPropietarios", "ciudadFirma"].forEach(k => cambia(x, k));
+  ["renta", "fianza"].forEach(k => mas1(x, k)); mas1(x.luz, "cuota"); mas1(x.luz, "tope"); mas1(x.agua, "cuota");
+  ["fechaInicio", "fechaFin", "fechaFirma", "fechaEntrega"].forEach(k => año(x, k));
+  return x;
+}
+
+/** Traduce las ediciones de un contrato en cambios reutilizables del modelo. */
+function cambiosRespectoAlModelo(original, items, datos) {
+  const sinNum = (t) => String(t || "").replace(/^[A-ZÁÉÍÓÚ]+\.\s*/, "");
+  const alternos = new Set(generarContrato(datosAlternos(datos)).map(b => sinNum(b.text)));
+  const fijo = (texto) => alternos.has(sinNum(texto));
+  const cambios = [];
+  const presentes = new Set(items.filter(b => b.orig !== null).map(b => b.orig));
+  original.forEach((b, i) => {
+    if (TIPOS_EDITABLES.includes(b.type) && !presentes.has(i) && fijo(b.text)) cambios.push({ tipo: "quitar", original: b.text });
+  });
+  let anterior = null;
+  for (const b of items) {
+    if (b.orig !== null) {
+      const o = original[b.orig];
+      if (o && fijo(o.text)) {
+        if (o.text !== b.text) cambios.push({ tipo: "reemplazar", original: o.text, nuevo: b.text, bloque: b.type });
+        anterior = b.text;
+      }
+    } else if (anterior !== null) {
+      cambios.push({ tipo: "añadir", despuesDe: anterior, nuevo: b.text, bloque: b.type });
+      anterior = b.text;
+    }
+  }
+  // Las cláusulas se renumeran al aplicarse: guardar los títulos sin número.
+  return cambios;
+}
+
 // ============ firma en la app ============
 
 const ROL_TEXTO = { arrendador: "Arrendador", arrendatario: "Arrendatario", fiador: "Fiador" };
 
-async function huellaDe(datos) {
-  const texto = JSON.stringify(generarContrato({ ...datos, conFotos: !!datos.conFotos }));
+/** Texto final de un contrato: el editado a mano o el del modelo. */
+function bloquesDe(c) {
+  return c.bloques?.length ? c.bloques : generarContrato(c.datos);
+}
+
+async function huellaDe(c) {
+  const texto = JSON.stringify(c.bloques?.length ? c.bloques : generarContrato({ ...c.datos, conFotos: !!c.datos.conFotos }));
   const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
   return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -870,8 +996,8 @@ function fechaHora(ts) {
 }
 
 /** El contrato en pantalla (mismo texto que el PDF). */
-function contratoHtml(datos) {
-  return generarContrato(datos).map(b => {
+function contratoHtml(c) {
+  return bloquesDe(c).map(b => {
     switch (b.type) {
       case "title": return `<h2 style="font-size:19px;text-align:center;color:var(--burdeos)">${esc(b.text)}</h2>`;
       case "subtitle": return `<p style="text-align:center;font-style:italic;margin:0">${esc(b.text)}</p>`;
@@ -986,7 +1112,7 @@ async function archivarFirmado(cid, c) {
       fecha: fechaHora(firmas[f.fid]?.firmadoEl), imagen: firmas[f.fid]?.imagen,
     })),
   };
-  const bytes = await construirPdf(generarContrato(c.datos), fotos, firmas, registro);
+  const bytes = await construirPdf(bloquesDe(c), fotos, firmas, registro);
   const nombre = c.nombreArchivo.replace(/\.pdf$/i, "") + "_firmado.pdf";
   const inv = { pisoNombre: c.pisoNombre, plantilla: c.plantilla, fechaInicio: c.datos.fechaInicio, fechaFin: c.datos.fechaFin };
   let firmado = [];
@@ -1008,7 +1134,7 @@ async function archivarFirmado(cid, c) {
 
 async function enviarAFirmar(cid, c) {
   const firmantes = firmantesDe(c.datos);
-  const huella = await huellaDe(c.datos);
+  const huella = await huellaDe(c);
   await updateDoc(D("contratos", cid), {
     estado: "firmando", firmantes, firmantesIds: firmantes.map(f => f.fid), huella, enviadoAFirmar: serverTimestamp(),
   });
@@ -1038,7 +1164,7 @@ async function vistaContrato(id) {
         ${(c.enDrive || []).map(d => `<a class="meta" style="color:var(--salvia-osc);font-weight:600" href="${esc(d.link)}" target="_blank" rel="noopener">✓ Renta ${d.año} / Contratos / ${esc(c.pisoNombre)}</a>`).join("")
           || '<div class="meta">No está en Drive (se descargó en el dispositivo)</div>'}</div>
       <details class="tarjeta"><summary style="font-weight:600;cursor:pointer;min-height:28px">Leer el contrato</summary>
-        <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;font-size:14px">${contratoHtml(c.datos)}</div></details>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;font-size:14px">${contratoHtml(c)}</div></details>
       <div class="tarjeta"><div class="eti-campo">Estado</div><div class="pasos">
         ${paso("Contrato generado", fechaCorta(c.creada), true)}
         ${paso("Enviado a firmar", c.estado === "generado" ? "Cuando lo revises, envíalo a firmar" : fechaCorta(c.enviadoAFirmar), c.estado !== "generado")}
@@ -1060,7 +1186,9 @@ async function vistaContrato(id) {
       ${c.firmado?.length ? c.firmado.map(d => `<a class="tarjeta" href="${esc(d.link)}" target="_blank" rel="noopener"><div class="nombre">Ver contrato firmado</div><div class="meta">Renta ${d.año}</div></a>`).join("") : ""}
     </div>
     <div class="acciones">
-      ${c.estado === "generado" ? '<button class="btn primario ancho" id="enviar">Enviar a firmar</button>' : ""}
+      ${c.estado === "generado" ? `<a class="btn secundario ancho" href="#/editar/${id}">${c.bloques?.length ? "Seguir editando el texto" : "Editar el texto del contrato"}</a>
+        <button class="btn primario ancho" id="enviar">Enviar a firmar</button>` : ""}
+      ${c.estado === "firmando" && hechas === 0 ? '<button class="btn secundario ancho" id="volver-editar">Cancelar el envío y editar el texto</button>' : ""}
       ${c.estado === "firmando" && completo ? '<button class="btn primario ancho" id="archivar">Guardar contrato firmado en Drive</button>' : ""}
       <div class="dos">
         <button class="btn secundario" id="descargar">Descargar PDF</button>
@@ -1072,6 +1200,11 @@ async function vistaContrato(id) {
   if ($("#copiar")) $("#copiar").onclick = async (e) => {
     const url = e.currentTarget.dataset.url;
     await compartir("Firma de tu contrato", url);
+  };
+  if ($("#volver-editar")) $("#volver-editar").onclick = async () => {
+    if (!preguntar("El enlace de firma dejará de funcionar hasta que lo envíes de nuevo. ¿Continuar?")) return;
+    await updateDoc(D("contratos", id), { estado: "generado", huella: "" });
+    location.hash = `#/editar/${id}`;
   };
   if ($("#habilitar-copia")) $("#habilitar-copia").onclick = async () => {
     await updateDoc(D("contratos", id), { copiaHabilitada: true, copiaHabilitadaEl: serverTimestamp() });
@@ -1097,7 +1230,7 @@ async function vistaContrato(id) {
   $("#descargar").onclick = async () => {
     const piso = c.pisoId ? (await getDoc(D("pisos", c.pisoId))).data() : null;
     const fotos = c.datos.conFotos ? await fotosDelPiso(piso).catch(() => null) : null;
-    bajar(await construirPdf(generarContrato(c.datos), fotos, firmas), c.nombreArchivo);
+    bajar(await construirPdf(bloquesDe(c), fotos, firmas), c.nombreArchivo);
   };
 
   $("#firmado").onchange = async (e) => {
@@ -1131,7 +1264,7 @@ async function vistaFirmaInquilino(token, inv, contratos) {
   const bloques = [];
   for (const { id, c } of contratos) {
     const estados = await estadosDe(id);
-    const intacto = (await huellaDe(c.datos)) === c.huella;
+    const intacto = (await huellaDe(c)) === c.huella;
     const suyos = c.firmantes.filter(f => f.rol !== "arrendador");
     const pendientes = suyos.filter(f => !estados[f.fid]).length;
     const copia = c.estado === "firmado" && c.copiaHabilitada;
@@ -1158,7 +1291,7 @@ async function vistaFirmaInquilino(token, inv, contratos) {
       ${b.copia
         ? `<button class="btn primario" data-copia="${b.id}">Descargar mi copia firmada</button>`
         : `<details class="tarjeta"><summary style="font-weight:600;cursor:pointer;min-height:28px">Leer el contrato completo</summary>
-             <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;font-size:14px">${contratoHtml(b.c.datos)}</div></details>
+             <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;font-size:14px">${contratoHtml(b.c)}</div></details>
            <button class="btn secundario" data-borrador="${b.id}">Descargar el contrato en PDF (sin firmas)</button>`}
       ${b.firm.html}
       <div class="tarjeta" style="background:transparent;border:1px dashed var(--borde)"><div class="meta">Los arrendadores firman al final, cuando hayáis firmado todos.</div></div>
@@ -1168,12 +1301,12 @@ async function vistaFirmaInquilino(token, inv, contratos) {
   bloques.forEach(b => b.firm.montar(app));
   $$("[data-borrador]").forEach(btn => (btn.onclick = async () => {
     const b = bloques.find(x => x.id === btn.dataset.borrador);
-    bajar(await construirPdf(generarContrato({ ...b.c.datos, conFotos: false })), b.c.nombreArchivo);
+    bajar(await construirPdf(bloquesDe(b.c).filter(x => x.type !== "annex")), b.c.nombreArchivo);
   }));
   $$("[data-copia]").forEach(btn => (btn.onclick = async () => {
     const b = bloques.find(x => x.id === btn.dataset.copia);
     const firmas = await firmasDe(b.id);
-    bajar(await construirPdf(generarContrato({ ...b.c.datos, conFotos: false }), null, firmas), b.c.nombreArchivo.replace(/\.pdf$/i, "") + "_firmado.pdf");
+    bajar(await construirPdf(bloquesDe(b.c).filter(x => x.type !== "annex"), null, firmas), b.c.nombreArchivo.replace(/\.pdf$/i, "") + "_firmado.pdf");
   }));
 }
 
@@ -1579,6 +1712,11 @@ async function vistaAjustes() {
       <label class="campo">Cláusulas adicionales (se añaden a todos tus contratos; separa cada una con una línea en blanco)
         <textarea name="clausulasExtra" rows="5" placeholder="Por ejemplo: No se permiten mascotas sin autorización escrita del arrendador.">${esc(k.clausulasExtra || "")}</textarea></label>
 
+      ${Object.entries(a.modelos || {}).filter(([, v]) => v?.length).map(([pl, v]) => `<div class="tarjeta"><div class="fila"><div>
+          <div class="nombre" style="font-size:14px">Modelo «${esc(PLANTILLAS[pl] || pl)}»</div>
+          <div class="meta">${v.length} cambio(s) guardados desde el editor de contratos</div></div>
+          <button type="button" class="btn peligro" data-borrar-modelo="${pl}" style="min-height:36px">Quitar cambios</button></div></div>`).join("")}
+
       <div class="eti-campo">Google Drive</div>
       ${segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin conectar")}</div>
@@ -1668,6 +1806,11 @@ async function vistaAjustes() {
     aviso(cambiaModo ? "Guardado. Ahora conecta tu Drive" : "Ajustes guardados");
     if (cambiaModo) vistaAjustes();
   };
+  $$("[data-borrar-modelo]").forEach(b => (b.onclick = async () => {
+    if (!preguntar("¿Volver al modelo original? Los contratos ya generados no cambian.")) return;
+    await setDoc(D("ajustes", "general"), { modelos: { ...(a.modelos || {}), [b.dataset.borrarModelo]: [] } }, { merge: true });
+    aviso("Modelo restaurado"); vistaAjustes();
+  }));
   $("#invitar").onclick = async () => {
     const email = $("#nuevo-miembro").value.trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email)) return aviso("Escribe un email válido", true);
@@ -1769,6 +1912,7 @@ async function enrutar() {
       case "inv": return await vistaInvitacion(arg);
       case "contratos": return await vistaContratos();
       case "contrato": return await vistaContrato(arg);
+      case "editar": return await vistaEditar(arg);
       case "ajustes": return await vistaAjustes();
       case "facturas": return await vistaFacturas();
       default: location.hash = "#/";

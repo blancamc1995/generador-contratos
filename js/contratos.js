@@ -72,8 +72,38 @@ function unir(items) {
  * }
  */
 export function generarContrato(datos) {
-  if (datos.plantilla === "larga_duracion") return contratoLargaDuracion(datos);
-  return contratoEstudiantes(datos);
+  const bloques = datos.plantilla === "larga_duracion" ? contratoLargaDuracion(datos) : contratoEstudiantes(datos);
+  return datos.cambiosModelo?.length ? aplicarCambios(bloques, datos.cambiosModelo) : bloques;
+}
+
+const RE_CLAUSULA = new RegExp(`^(${ORDINALES.join("|")}|NUEVA)\\.\\s*`);
+
+/** Vuelve a numerar las cláusulas (PRIMERA, SEGUNDA…) en el orden en que aparecen. */
+export function renumerar(bloques) {
+  let n = 0;
+  return bloques.map(b => (b.type === "subheading" && RE_CLAUSULA.test(b.text)
+    ? { ...b, text: b.text.replace(RE_CLAUSULA, `${ORDINALES[n++] || "CLÁUSULA " + n}. `) } : b));
+}
+
+/**
+ * Cambios guardados en el modelo de un propietario. Se aplican sobre los
+ * párrafos fijos del modelo (los que no llevan datos de cada contrato):
+ *   { tipo: "reemplazar", original, nuevo, bloque }  cambia un párrafo
+ *   { tipo: "quitar", original }                      lo elimina
+ *   { tipo: "añadir", despuesDe, nuevo, bloque }       inserta uno nuevo detrás
+ */
+export function aplicarCambios(bloques, cambios) {
+  let out = bloques.map(b => ({ ...b }));
+  for (const c of cambios || []) {
+    const sinNum = (t) => String(t || "").replace(RE_CLAUSULA, "");
+    const buscado = sinNum(c.original ?? c.despuesDe);
+    const i = out.findIndex(b => typeof b.text === "string" && sinNum(b.text) === buscado);
+    if (i < 0) continue;
+    if (c.tipo === "reemplazar") out[i] = { type: c.bloque || out[i].type, text: c.nuevo };
+    else if (c.tipo === "quitar") out.splice(i, 1);
+    else if (c.tipo === "añadir") out.splice(i + 1, 0, { type: c.bloque || "p", text: c.nuevo });
+  }
+  return renumerar(out);
 }
 
 /** Condiciones configurables por cada propietario (Ajustes → Contratos). */
