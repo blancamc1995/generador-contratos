@@ -136,7 +136,7 @@ service cloud.firestore {
     // Cambia los dos emails por los vuestros. Cuando la migración esté hecha
     // se puede borrar este bloque.
     function usuarioAntiguo() {
-      return emailVerificado() && miEmail() in ['blancamc95@gmail.com', 'masegui01@gmail.com'];
+      return emailVerificado() && miEmail() in ['TU_EMAIL@gmail.com', 'EMAIL_DE_MANU@gmail.com'];
     }
     match /ajustes/{d} { allow read, update: if usuarioAntiguo(); }
     match /pisos/{d=**} { allow read: if usuarioAntiguo(); }
