@@ -76,6 +76,45 @@ export function generarContrato(datos) {
   return contratoEstudiantes(datos);
 }
 
+/** Condiciones configurables por cada propietario (Ajustes → Contratos). */
+function condiciones(datos) {
+  const c = datos.condiciones || {};
+  const dia = parseInt(c.diaPago, 10);
+  return {
+    diaPago: dia >= 1 && dia <= 28 ? dia : 7,
+    garantia: Math.min(2, Math.max(0, parseInt(c.garantiaMeses, 10) || 0)),
+    ccaa: (c.ccaa || "").trim(),
+    extra: (c.clausulasExtra || "").trim(),
+    limpieza: c.clausulaLimpieza !== false,
+  };
+}
+
+const NUM_TXT = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece",
+  "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés",
+  "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho"];
+
+function plazoPago(datos) {
+  const d = condiciones(datos).diaPago;
+  return d === 1 ? "el primer día de cada mes" : `dentro de los ${NUM_TXT[d]} primeros días de cada mes`;
+}
+
+function bloquesGarantiaYDeposito(add, datos, ARR, v, renta) {
+  const k = condiciones(datos);
+  if (k.garantia > 0) {
+    add("p", `Adicionalmente, y conforme al artículo 36.5 de la LAU, ${ARR} ${v("entrega", "entregan")} a EL ARRENDADOR la cantidad de ${euros(renta * k.garantia)}, equivalente a ${k.garantia === 1 ? "una mensualidad" : "dos mensualidades"} de renta, en concepto de garantía adicional del cumplimiento de sus obligaciones, que se devolverá en las mismas condiciones que la fianza.`);
+  }
+  if (k.ccaa) {
+    add("p", `EL ARRENDADOR depositará la fianza en el organismo competente de ${k.ccaa}, conforme a la normativa autonómica aplicable.`);
+  }
+}
+
+function bloqueClausulasExtra(add, datos, c) {
+  const extra = condiciones(datos).extra;
+  if (!extra) return;
+  add("subheading", c.siguiente("Otras estipulaciones."));
+  extra.split(/\n\s*\n/).map(t => t.trim()).filter(Boolean).forEach(t => add("p", t.replace(/\s*\n\s*/g, " ")));
+}
+
 function contexto(datos) {
   const inquilinos = datos.inquilinos || [];
   const varios = inquilinos.length > 1;
@@ -92,7 +131,7 @@ function contexto(datos) {
 function bloquesReunidos(datos, add, c, { conDomicilioTitulo }) {
   const props = datos.propietarios;
   const descProps = props.map(p => `${trato(p)} ${p.nombre}, mayor de edad, ${documento(p)}`);
-  add("p", `DE UNA PARTE, ${descProps.join(", y ")}, ${props.length > 1 ? "ambos" : ""} con domicilio a efectos de notificaciones en ${sinPunto(datos.domicilioPropietarios)}, en adelante "EL ARRENDADOR".`.replace(",  con", ", con"));
+  add("p", `DE UNA PARTE, ${descProps.length > 1 ? descProps.slice(0, -1).join(", ") + ", y " + descProps[descProps.length - 1] : descProps[0]}, ${props.length === 2 ? "ambos" : props.length > 2 ? "todos" : ""} con domicilio a efectos de notificaciones en ${sinPunto(datos.domicilioPropietarios)}, en adelante "EL ARRENDADOR".`.replace(",  con", ", con"));
 
   const descInq = c.inquilinos.map(i =>
     `${trato(i)} ${i.nombre || HUECO}, mayor de edad, ${documento(i)}, con domicilio ${conDomicilioTitulo} en ${sinPunto(i.domicilio) || HUECO}`);
@@ -158,7 +197,7 @@ function contratoEstudiantes(datos) {
 
   add("title", "CONTRATO DE ARRENDAMIENTO DE VIVIENDA PARA USO DE VIVIENDA HABITUAL Y PERMANENTE");
   if (esHab) add("subtitle", "(arrendamiento de habitación en vivienda compartida)");
-  add("p", `En ${datos.ciudadFirma || "Córdoba"}, a ${fechaLarga(datos.fechaFirma)}.`);
+  add("p", `En ${datos.ciudadFirma || HUECO}, a ${fechaLarga(datos.fechaFirma)}.`);
 
   add("heading", "REUNIDOS");
   bloquesReunidos(datos, add, c, { conDomicilioTitulo: "a efectos de notificaciones" });
@@ -187,9 +226,9 @@ function contratoEstudiantes(datos) {
   const conceptoRenta = esHab ? "renta por la habitación arrendada" : "renta por la vivienda arrendada";
   const solid = esHab ? "" : (c.varios ? "solidariamente, " : "");
   if (conCuota) {
-    add("p", `La renta mensual total a abonar por ${ARR} asciende a ${euros(renta + cuotaLuz)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado dentro de los siete primeros días de cada mes, y que se desglosa en ${euros(renta)} en concepto de ${conceptoRenta} y ${euros(cuotaLuz)} en concepto de cuota fija por el suministro eléctrico, conforme a lo dispuesto en el párrafo siguiente.`);
+    add("p", `La renta mensual total a abonar por ${ARR} asciende a ${euros(renta + cuotaLuz)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}, y que se desglosa en ${euros(renta)} en concepto de ${conceptoRenta} y ${euros(cuotaLuz)} en concepto de cuota fija por el suministro eléctrico, conforme a lo dispuesto en el párrafo siguiente.`);
   } else {
-    add("p", `La renta mensual ${esHab ? "de la habitación arrendada" : "de la vivienda"} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado dentro de los siete primeros días de cada mes.`);
+    add("p", `La renta mensual ${esHab ? "de la habitación arrendada" : "de la vivienda"} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}.`);
   }
   const concepto = `Alquiler ${datos.piso.nombre} + ${c.inquilinos.map(i => i.nombre).join(" y ")}`;
   add("p", `El pago se realizará mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, debiendo hacerse constar en el concepto de la transferencia: "${concepto}".`);
@@ -198,6 +237,7 @@ function contratoEstudiantes(datos) {
 
   add("subheading", c.siguiente("Fianza."));
   add("p", `En el momento de la firma del presente contrato, ${ARR} ${v("hace", "hacen")} entrega a EL ARRENDADOR, en concepto de fianza legal y de conformidad con el artículo 36 de la LAU, de la cantidad de ${euros(fianza)}, equivalente a una mensualidad de renta. La fianza será devuelta a ${ARR} a la finalización del contrato, previa comprobación del buen estado de ${objetoRef} y enseres, y una vez deducidas, en su caso, las cantidades que correspondan en concepto de desperfectos, suministros pendientes u otras cantidades adeudadas.`);
+  bloquesGarantiaYDeposito(add, datos, ARR, v, renta);
 
   if (c.avales.length) {
     add("subheading", c.siguiente(c.avales.length > 1 ? "Fiadores solidarios." : "Fiador solidario."));
@@ -215,7 +255,7 @@ function contratoEstudiantes(datos) {
   const objLimpieza = esHab
     ? "la habitación arrendada, así como las zonas comunes de la vivienda (cocina, salón, baños y demás estancias de uso compartido),"
     : "la vivienda arrendada";
-  add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que existían al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero sí un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podrá descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
+  if (condiciones(datos).limpieza) add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que existían al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero sí un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podrá descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
 
   add("subheading", c.siguiente("Gastos."));
   add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y demás tributos que graven la propiedad) serán de cuenta de EL ARRENDADOR. Los gastos por suministros se regirán por lo dispuesto en la cláusula tercera.");
@@ -229,6 +269,7 @@ function contratoEstudiantes(datos) {
   add("subheading", c.siguiente("Normativa aplicable."));
   add("p", "En todo lo no previsto expresamente en este contrato, las partes se someten a lo dispuesto en la LAU y, supletoriamente, al Código Civil.");
 
+  bloqueClausulasExtra(add, datos, c);
   bloqueFirmas(add, datos, c);
   return L;
 }
@@ -301,7 +342,7 @@ function contratoLargaDuracion(datos) {
   } else {
     add("p", `La renta mensual se fija en ${euros(renta)}.`);
   }
-  add("p", `${ARR} se ${v("obliga", "obligan")} a abonar dicha cantidad ${c.varios ? "solidariamente, " : ""}por adelantado dentro de los siete primeros días de cada mes, mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map(i => i.nombre).join(" y ")}". El justificante de la transferencia acreditará el pago y servirá de recibo, salvo prueba en contrario.`);
+  add("p", `${ARR} se ${v("obliga", "obligan")} a abonar dicha cantidad ${c.varios ? "solidariamente, " : ""}por adelantado ${plazoPago(datos)}, mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map(i => i.nombre).join(" y ")}". El justificante de la transferencia acreditará el pago y servirá de recibo, salvo prueba en contrario.`);
   add("p", "Las cantidades no satisfechas en plazo devengarán el interés legal del dinero desde la fecha en que debieron abonarse.");
 
   add("subheading", c.siguiente("Actualización de la renta."));
@@ -311,6 +352,7 @@ function contratoLargaDuracion(datos) {
   add("subheading", c.siguiente("Fianza."));
   add("p", `En el momento de la firma del presente contrato, ${ARR} ${v("hace", "hacen")} entrega a EL ARRENDADOR, en concepto de fianza legal y de conformidad con el artículo 36 de la LAU, de la cantidad de ${euros(fianza)}, equivalente a una mensualidad de renta.`);
   add("p", `La fianza garantiza el cumplimiento de las obligaciones de ${ARR} derivadas de este contrato. A la finalización del arrendamiento será devuelta a ${ARR} en el plazo de un mes desde la entrega de llaves, una vez deducidas, en su caso, las cantidades que correspondan en concepto de rentas o suministros pendientes y de desperfectos que no se deban al uso ordinario de la vivienda. La fianza no podrá aplicarse al pago de la última mensualidad de renta.`);
+  bloquesGarantiaYDeposito(add, datos, ARR, v, renta);
 
   if (c.avales.length) {
     add("subheading", c.siguiente(c.avales.length > 1 ? "Fiadores solidarios." : "Fiador solidario."));
@@ -345,6 +387,7 @@ function contratoLargaDuracion(datos) {
   add("subheading", c.siguiente("Normativa aplicable y jurisdicción."));
   add("p", "En todo lo no previsto expresamente en este contrato será de aplicación la LAU y, supletoriamente, el Código Civil. Para cualquier controversia derivada del presente contrato serán competentes los Juzgados y Tribunales del lugar en que radica la vivienda.");
 
+  bloqueClausulasExtra(add, datos, c);
   bloqueFirmas(add, datos, c);
   if (datos.conFotos) add("annex", "ANEXO I. ESTADO ACTUAL DE LA VIVIENDA");
   return L;

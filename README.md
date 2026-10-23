@@ -1,19 +1,32 @@
 # Contratos de alquiler
 
-App web para gestionar los contratos de los pisos:
+App web para propietarios de viviendas, **multiusuario**: cualquier persona entra con su cuenta de Google, configura sus datos con un asistente y gestiona sus pisos, inquilinos, contratos, firmas y facturas. Cada cuenta solo ve sus propios datos.
 
-1. Creáis una invitación (piso, modalidad, renta, luz…) y mandáis el enlace al inquilino.
-2. El inquilino rellena sus datos y los de sus avalistas.
-3. Generáis el contrato y lo enviáis a firmar.
-4. Cada persona firma su parte con el dedo desde el móvil.
-5. El PDF firmado se guarda solo en Google Drive: `Rentas / Renta AAAA / Contratos / Piso`, en cada año fiscal que abarque el contrato.
-6. Las facturas de los pisos (foto o archivo) van a `Rentas / Renta AAAA / Pisos facturas / Piso`, según la fecha de la factura.
+## Cómo funciona para un usuario nuevo
 
-Funciona entera en el navegador, sin servidor propio:
+1. Entra con Google → se crea su cuenta.
+2. Asistente: propietarios (uno o varios), domicilio, IBAN, comunidad autónoma, Google Drive y aceptación de condiciones.
+3. Da de alta sus pisos y crea invitaciones para sus inquilinos.
+4. Puede invitar a otros propietarios a su equipo (Ajustes → Equipo).
 
-- **GitHub Pages** aloja la web.
-- **Firebase** guarda los datos y gestiona el inicio de sesión (plan gratuito).
-- **Google Drive** guarda los PDF.
+### Estructura de datos (Firestore)
+
+| Ruta | Contenido |
+|---|---|
+| `usuarios/{uid}` | a qué cuenta pertenece cada usuario |
+| `cuentas/{id}` | miembros del equipo y titular |
+| `cuentas/{id}/ajustes, pisos, invitaciones, contratos, facturas` | todos los datos de esa cuenta |
+| `accesos/{email}` | invitaciones a un equipo pendientes |
+| `enlaces/{token}` | enlace público de cada inquilino → su cuenta |
+
+### Google Drive
+
+- **Carpeta propia (por defecto):** la app crea «Alquileres» en el Drive del usuario y solo accede a ella (permiso `drive.file`). Es el modo apto para comercializar.
+- **Mis carpetas:** organiza dentro de carpetas que ya existían (p. ej. Rentas / Renta 2026). Necesita el permiso amplio `drive`, que Google considera restringido: para usuarios fuera del modo de prueba exige una auditoría de seguridad de pago.
+
+### Textos legales
+
+En `js/legal.js`: aviso legal, política de privacidad, condiciones de uso, contrato de encargo del tratamiento (art. 28 RGPD) e información para inquilinos (art. 13 RGPD). Completar los datos del titular en `js/firebase-config.js` → `titular` y hacerlos revisar por un abogado antes de vender.
 
 ## Modo demostración
 

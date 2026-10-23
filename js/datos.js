@@ -4,7 +4,7 @@
 
 import { CONFIG } from "./firebase-config.js";
 
-export const DEMO = String(CONFIG.firebase.apiKey).startsWith("PEGAR") || new URLSearchParams(location.search).has("demo");
+export const DEMO = window.__DEMO__ === true || String(CONFIG.firebase.apiKey).startsWith("PEGAR") || new URLSearchParams(location.search).has("demo");
 
 const V = "13.0.0";
 let api;
@@ -35,12 +35,12 @@ export const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
 // ================= modo demostración =================
 
 function crearDemo() {
-  const CLAVE = "contratos-demo-v3";
+  const CLAVE = "contratos-demo-v4";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
     try { memoria = JSON.parse(localStorage.getItem(CLAVE) || "null"); } catch { memoria = null; }
-    if (!memoria) memoria = semilla();
+    if (!memoria) { memoria = semilla(); try { localStorage.setItem(CLAVE, JSON.stringify(memoria)); } catch { /* sin almacenamiento */ } }
     return memoria;
   };
   const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify(memoria)); } catch { /* sin almacenamiento */ } };
@@ -157,5 +157,14 @@ function semilla() {
     ],
     consentimiento: true, enviada: ts(1),
   };
-  return m;
+  // Todo vive dentro de la cuenta de demostración.
+  const out = {};
+  for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;
+  out["cuentas/demo/ajustes/general"].condiciones = { ccaa: "Andalucía", diaPago: 7, garantiaMeses: 0 };
+  out["cuentas/demo/ajustes/general"].modoDrive = "propia";
+  out["cuentas/demo/invitaciones/demoPriego2"].arrendadores = "Propietario Ejemplo Uno y Propietaria Ejemplo Dos";
+  out["cuentas/demo"] = { nombre: "Demo", propietario: "demo", miembros: ["demo"], emailsMiembros: ["demo@ejemplo.com"], correos: { demo: "demo@ejemplo.com" }, plan: "prueba" };
+  out["usuarios/demo"] = { cuentaId: "demo", email: "demo@ejemplo.com" };
+  out["enlaces/demoPriego2"] = { cuentaId: "demo" };
+  return out;
 }

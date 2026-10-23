@@ -13,12 +13,24 @@ var CONFIG = {
   googleClientId: "221718655510-vncb0h6rbu7fpe4k1grva7j07f9v5oir.apps.googleusercontent.com",
   // Número del proyecto (Configuración del proyecto en Firebase → General).
   googleProjectNumber: "221718655510",
-  // Nombre con el que os saluda el panel.
-  saludo: "Blanca y Manu"
+  // Nombre de la aplicación (portada, textos legales, pestaña).
+  nombreApp: "Contratos de alquiler",
+  // Carpeta que crea la app en el Drive de cada usuario (modo «carpeta propia»).
+  carpetaRaiz: "Alquileres",
+  // Titular del servicio: aparece en el aviso legal y la política de privacidad.
+  // ⚠️ Rellenar antes de comercializar (la LSSI obliga a mostrarlo).
+  titular: {
+    nombre: "",
+    nif: "",
+    domicilio: "",
+    email: "",
+    fechaTextos: "octubre de 2026"
+  },
+  versionTextos: "1"
 };
 
 // js/datos.js
-var DEMO = String(CONFIG.firebase.apiKey).startsWith("PEGAR") || new URLSearchParams(location.search).has("demo");
+var DEMO = window.__DEMO__ === true || String(CONFIG.firebase.apiKey).startsWith("PEGAR") || new URLSearchParams(location.search).has("demo");
 var V = "13.0.0";
 var api;
 if (!DEMO) {
@@ -74,7 +86,7 @@ var {
   arrayUnion
 } = api;
 function crearDemo() {
-  const CLAVE = "contratos-demo-v3";
+  const CLAVE = "contratos-demo-v4";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -83,7 +95,13 @@ function crearDemo() {
     } catch {
       memoria = null;
     }
-    if (!memoria) memoria = semilla();
+    if (!memoria) {
+      memoria = semilla();
+      try {
+        localStorage.setItem(CLAVE, JSON.stringify(memoria));
+      } catch {
+      }
+    }
     return memoria;
   };
   const guardar = () => {
@@ -143,7 +161,7 @@ function crearDemo() {
     getDocs: async (q) => {
       const m = cargar();
       const prof = q.path.split("/").length + 1;
-      let docs = Object.keys(m).filter((p) => p.startsWith(q.path + "/") && p.split("/").length === prof).map(snap);
+      let docs = Object.keys(m).filter((p2) => p2.startsWith(q.path + "/") && p2.split("/").length === prof).map(snap);
       for (const c of q.cs || []) {
         if (c.tipo === "where") docs = docs.filter((d) => d.data()[c.campo] === c.valor);
         if (c.tipo === "orden") docs.sort((a, b) => ordenar(a.data()[c.campo], b.data()[c.campo]) * (c.dir === "desc" ? -1 : 1));
@@ -267,7 +285,15 @@ function semilla() {
     consentimiento: true,
     enviada: ts(1)
   };
-  return m;
+  const out = {};
+  for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;
+  out["cuentas/demo/ajustes/general"].condiciones = { ccaa: "Andaluc\xEDa", diaPago: 7, garantiaMeses: 0 };
+  out["cuentas/demo/ajustes/general"].modoDrive = "propia";
+  out["cuentas/demo/invitaciones/demoPriego2"].arrendadores = "Propietario Ejemplo Uno y Propietaria Ejemplo Dos";
+  out["cuentas/demo"] = { nombre: "Demo", propietario: "demo", miembros: ["demo"], emailsMiembros: ["demo@ejemplo.com"], correos: { demo: "demo@ejemplo.com" }, plan: "prueba" };
+  out["usuarios/demo"] = { cuentaId: "demo", email: "demo@ejemplo.com" };
+  out["enlaces/demoPriego2"] = { cuentaId: "demo" };
+  return out;
 }
 
 // js/contratos.js
@@ -320,9 +346,9 @@ function num(v) {
 function sinPunto(s) {
   return (s || "").trim().replace(/[.;,]\s*$/, "");
 }
-function documento(p) {
-  const n = (p.numDoc || "").trim() || HUECO;
-  switch (p.tipoDoc) {
+function documento(p2) {
+  const n = (p2.numDoc || "").trim() || HUECO;
+  switch (p2.tipoDoc) {
     case "NIE":
       return `con N.I.E. ${n}`;
     case "Pasaporte":
@@ -333,8 +359,8 @@ function documento(p) {
       return `con D.N.I. ${n}`;
   }
 }
-function trato(p) {
-  return p.tratamiento === "D\xF1a." ? "D\xF1a." : "D.";
+function trato(p2) {
+  return p2.tratamiento === "D\xF1a." ? "D\xF1a." : "D.";
 }
 function unir(items) {
   if (items.length <= 1) return items.join("");
@@ -343,6 +369,67 @@ function unir(items) {
 function generarContrato(datos) {
   if (datos.plantilla === "larga_duracion") return contratoLargaDuracion(datos);
   return contratoEstudiantes(datos);
+}
+function condiciones(datos) {
+  const c = datos.condiciones || {};
+  const dia = parseInt(c.diaPago, 10);
+  return {
+    diaPago: dia >= 1 && dia <= 28 ? dia : 7,
+    garantia: Math.min(2, Math.max(0, parseInt(c.garantiaMeses, 10) || 0)),
+    ccaa: (c.ccaa || "").trim(),
+    extra: (c.clausulasExtra || "").trim(),
+    limpieza: c.clausulaLimpieza !== false
+  };
+}
+var NUM_TXT = [
+  "",
+  "uno",
+  "dos",
+  "tres",
+  "cuatro",
+  "cinco",
+  "seis",
+  "siete",
+  "ocho",
+  "nueve",
+  "diez",
+  "once",
+  "doce",
+  "trece",
+  "catorce",
+  "quince",
+  "diecis\xE9is",
+  "diecisiete",
+  "dieciocho",
+  "diecinueve",
+  "veinte",
+  "veintiuno",
+  "veintid\xF3s",
+  "veintitr\xE9s",
+  "veinticuatro",
+  "veinticinco",
+  "veintis\xE9is",
+  "veintisiete",
+  "veintiocho"
+];
+function plazoPago(datos) {
+  const d = condiciones(datos).diaPago;
+  return d === 1 ? "el primer d\xEDa de cada mes" : `dentro de los ${NUM_TXT[d]} primeros d\xEDas de cada mes`;
+}
+function bloquesGarantiaYDeposito(add, datos, ARR, v, renta) {
+  const k = condiciones(datos);
+  if (k.garantia > 0) {
+    add("p", `Adicionalmente, y conforme al art\xEDculo 36.5 de la LAU, ${ARR} ${v("entrega", "entregan")} a EL ARRENDADOR la cantidad de ${euros(renta * k.garantia)}, equivalente a ${k.garantia === 1 ? "una mensualidad" : "dos mensualidades"} de renta, en concepto de garant\xEDa adicional del cumplimiento de sus obligaciones, que se devolver\xE1 en las mismas condiciones que la fianza.`);
+  }
+  if (k.ccaa) {
+    add("p", `EL ARRENDADOR depositar\xE1 la fianza en el organismo competente de ${k.ccaa}, conforme a la normativa auton\xF3mica aplicable.`);
+  }
+}
+function bloqueClausulasExtra(add, datos, c) {
+  const extra = condiciones(datos).extra;
+  if (!extra) return;
+  add("subheading", c.siguiente("Otras estipulaciones."));
+  extra.split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean).forEach((t) => add("p", t.replace(/\s*\n\s*/g, " ")));
 }
 function contexto(datos) {
   const inquilinos = datos.inquilinos || [];
@@ -358,8 +445,8 @@ function contexto(datos) {
 }
 function bloquesReunidos(datos, add, c, { conDomicilioTitulo }) {
   const props = datos.propietarios;
-  const descProps = props.map((p) => `${trato(p)} ${p.nombre}, mayor de edad, ${documento(p)}`);
-  add("p", `DE UNA PARTE, ${descProps.join(", y ")}, ${props.length > 1 ? "ambos" : ""} con domicilio a efectos de notificaciones en ${sinPunto(datos.domicilioPropietarios)}, en adelante "EL ARRENDADOR".`.replace(",  con", ", con"));
+  const descProps = props.map((p2) => `${trato(p2)} ${p2.nombre}, mayor de edad, ${documento(p2)}`);
+  add("p", `DE UNA PARTE, ${descProps.length > 1 ? descProps.slice(0, -1).join(", ") + ", y " + descProps[descProps.length - 1] : descProps[0]}, ${props.length === 2 ? "ambos" : props.length > 2 ? "todos" : ""} con domicilio a efectos de notificaciones en ${sinPunto(datos.domicilioPropietarios)}, en adelante "EL ARRENDADOR".`.replace(",  con", ", con"));
   const descInq = c.inquilinos.map((i) => `${trato(i)} ${i.nombre || HUECO}, mayor de edad, ${documento(i)}, con domicilio ${conDomicilioTitulo} en ${sinPunto(i.domicilio) || HUECO}`);
   add("p", `DE OTRA PARTE, ${unir(descInq)}; en adelante, ${c.varios ? "conjuntamente, " : ""}"${c.ARR}".`);
   if (c.avales.length) {
@@ -386,10 +473,10 @@ function bloqueFirmas(add, datos, c) {
 }
 function firmantesDe(datos) {
   const out = [];
-  (datos.propietarios || []).forEach((p, i) => out.push({ fid: `arr${i}`, rol: "arrendador", nombre: p.nombre, tipoDoc: p.tipoDoc, numDoc: p.numDoc }));
+  (datos.propietarios || []).forEach((p2, i) => out.push({ fid: `arr${i}`, rol: "arrendador", nombre: p2.nombre, tipoDoc: p2.tipoDoc, numDoc: p2.numDoc }));
   let k = 0;
-  (datos.inquilinos || []).forEach((p, i) => out.push({ fid: `inq${i}`, rol: "arrendatario", nombre: p.nombre, tipoDoc: p.tipoDoc, numDoc: p.numDoc }));
-  (datos.inquilinos || []).forEach((p) => (p.avales || []).forEach((a) => out.push({ fid: `fia${k++}`, rol: "fiador", nombre: a.nombre, tipoDoc: a.tipoDoc, numDoc: a.numDoc, avalaA: p.nombre })));
+  (datos.inquilinos || []).forEach((p2, i) => out.push({ fid: `inq${i}`, rol: "arrendatario", nombre: p2.nombre, tipoDoc: p2.tipoDoc, numDoc: p2.numDoc }));
+  (datos.inquilinos || []).forEach((p2) => (p2.avales || []).forEach((a) => out.push({ fid: `fia${k++}`, rol: "fiador", nombre: a.nombre, tipoDoc: a.tipoDoc, numDoc: a.numDoc, avalaA: p2.nombre })));
   return out;
 }
 function contratoEstudiantes(datos) {
@@ -407,7 +494,7 @@ function contratoEstudiantes(datos) {
   const conCuota = (luz.opcion === "B" || luz.opcion === "C") && cuotaLuz > 0;
   add("title", "CONTRATO DE ARRENDAMIENTO DE VIVIENDA PARA USO DE VIVIENDA HABITUAL Y PERMANENTE");
   if (esHab) add("subtitle", "(arrendamiento de habitaci\xF3n en vivienda compartida)");
-  add("p", `En ${datos.ciudadFirma || "C\xF3rdoba"}, a ${fechaLarga(datos.fechaFirma)}.`);
+  add("p", `En ${datos.ciudadFirma || HUECO}, a ${fechaLarga(datos.fechaFirma)}.`);
   add("heading", "REUNIDOS");
   bloquesReunidos(datos, add, c, { conDomicilioTitulo: "a efectos de notificaciones" });
   add("heading", "EXPONEN");
@@ -430,9 +517,9 @@ function contratoEstudiantes(datos) {
   const conceptoRenta = esHab ? "renta por la habitaci\xF3n arrendada" : "renta por la vivienda arrendada";
   const solid = esHab ? "" : c.varios ? "solidariamente, " : "";
   if (conCuota) {
-    add("p", `La renta mensual total a abonar por ${ARR} asciende a ${euros(renta + cuotaLuz)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado dentro de los siete primeros d\xEDas de cada mes, y que se desglosa en ${euros(renta)} en concepto de ${conceptoRenta} y ${euros(cuotaLuz)} en concepto de cuota fija por el suministro el\xE9ctrico, conforme a lo dispuesto en el p\xE1rrafo siguiente.`);
+    add("p", `La renta mensual total a abonar por ${ARR} asciende a ${euros(renta + cuotaLuz)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}, y que se desglosa en ${euros(renta)} en concepto de ${conceptoRenta} y ${euros(cuotaLuz)} en concepto de cuota fija por el suministro el\xE9ctrico, conforme a lo dispuesto en el p\xE1rrafo siguiente.`);
   } else {
-    add("p", `La renta mensual ${esHab ? "de la habitaci\xF3n arrendada" : "de la vivienda"} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado dentro de los siete primeros d\xEDas de cada mes.`);
+    add("p", `La renta mensual ${esHab ? "de la habitaci\xF3n arrendada" : "de la vivienda"} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}.`);
   }
   const concepto = `Alquiler ${datos.piso.nombre} + ${c.inquilinos.map((i) => i.nombre).join(" y ")}`;
   add("p", `El pago se realizar\xE1 mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, debiendo hacerse constar en el concepto de la transferencia: "${concepto}".`);
@@ -440,6 +527,7 @@ function contratoEstudiantes(datos) {
   add("p", textoActualizacion(c));
   add("subheading", c.siguiente("Fianza."));
   add("p", `En el momento de la firma del presente contrato, ${ARR} ${v("hace", "hacen")} entrega a EL ARRENDADOR, en concepto de fianza legal y de conformidad con el art\xEDculo 36 de la LAU, de la cantidad de ${euros(fianza)}, equivalente a una mensualidad de renta. La fianza ser\xE1 devuelta a ${ARR} a la finalizaci\xF3n del contrato, previa comprobaci\xF3n del buen estado de ${objetoRef} y enseres, y una vez deducidas, en su caso, las cantidades que correspondan en concepto de desperfectos, suministros pendientes u otras cantidades adeudadas.`);
+  bloquesGarantiaYDeposito(add, datos, ARR, v, renta);
   if (c.avales.length) {
     add("subheading", c.siguiente(c.avales.length > 1 ? "Fiadores solidarios." : "Fiador solidario."));
     bloqueFiadores(add, c, objetoRef, esHab);
@@ -453,7 +541,7 @@ function contratoEstudiantes(datos) {
   add("subheading", c.siguiente("Conservaci\xF3n, uso y obras."));
   add("p", `${ARR} se ${v("obliga", "obligan")} a conservar ${esHab ? "la habitaci\xF3n y las zonas comunes" : "la vivienda"} en buen estado, destin\xE1ndola exclusivamente a vivienda habitual, sin desarrollar en ella actividades molestas, insalubres, nocivas, peligrosas o il\xEDcitas, ni ceder o subarrendar, total o parcialmente, ${objetoRef} sin consentimiento previo y por escrito de EL ARRENDADOR. Las peque\xF1as reparaciones que exija el desgaste por el uso ordinario ser\xE1n de cuenta de ${ARR}, conforme al art\xEDculo 21.4 de la LAU.`);
   const objLimpieza = esHab ? "la habitaci\xF3n arrendada, as\xED como las zonas comunes de la vivienda (cocina, sal\xF3n, ba\xF1os y dem\xE1s estancias de uso compartido)," : "la vivienda arrendada";
-  add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que exist\xEDan al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero s\xED un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podr\xE1 descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
+  if (condiciones(datos).limpieza) add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que exist\xEDan al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero s\xED un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podr\xE1 descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
   add("subheading", c.siguiente("Gastos."));
   add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y dem\xE1s tributos que graven la propiedad) ser\xE1n de cuenta de EL ARRENDADOR. Los gastos por suministros se regir\xE1n por lo dispuesto en la cl\xE1usula tercera.");
   add("subheading", c.siguiente("Resoluci\xF3n."));
@@ -462,6 +550,7 @@ function contratoEstudiantes(datos) {
   add("p", "A los efectos del presente contrato, las partes se\xF1alan como domicilios v\xE1lidos para notificaciones los que constan en el encabezamiento de este documento.");
   add("subheading", c.siguiente("Normativa aplicable."));
   add("p", "En todo lo no previsto expresamente en este contrato, las partes se someten a lo dispuesto en la LAU y, supletoriamente, al C\xF3digo Civil.");
+  bloqueClausulasExtra(add, datos, c);
   bloqueFirmas(add, datos, c);
   return L;
 }
@@ -521,7 +610,7 @@ function contratoLargaDuracion(datos) {
   } else {
     add("p", `La renta mensual se fija en ${euros(renta)}.`);
   }
-  add("p", `${ARR} se ${v("obliga", "obligan")} a abonar dicha cantidad ${c.varios ? "solidariamente, " : ""}por adelantado dentro de los siete primeros d\xEDas de cada mes, mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map((i) => i.nombre).join(" y ")}". El justificante de la transferencia acreditar\xE1 el pago y servir\xE1 de recibo, salvo prueba en contrario.`);
+  add("p", `${ARR} se ${v("obliga", "obligan")} a abonar dicha cantidad ${c.varios ? "solidariamente, " : ""}por adelantado ${plazoPago(datos)}, mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map((i) => i.nombre).join(" y ")}". El justificante de la transferencia acreditar\xE1 el pago y servir\xE1 de recibo, salvo prueba en contrario.`);
   add("p", "Las cantidades no satisfechas en plazo devengar\xE1n el inter\xE9s legal del dinero desde la fecha en que debieron abonarse.");
   add("subheading", c.siguiente("Actualizaci\xF3n de la renta."));
   add("p", textoActualizacion(c));
@@ -529,6 +618,7 @@ function contratoLargaDuracion(datos) {
   add("subheading", c.siguiente("Fianza."));
   add("p", `En el momento de la firma del presente contrato, ${ARR} ${v("hace", "hacen")} entrega a EL ARRENDADOR, en concepto de fianza legal y de conformidad con el art\xEDculo 36 de la LAU, de la cantidad de ${euros(fianza)}, equivalente a una mensualidad de renta.`);
   add("p", `La fianza garantiza el cumplimiento de las obligaciones de ${ARR} derivadas de este contrato. A la finalizaci\xF3n del arrendamiento ser\xE1 devuelta a ${ARR} en el plazo de un mes desde la entrega de llaves, una vez deducidas, en su caso, las cantidades que correspondan en concepto de rentas o suministros pendientes y de desperfectos que no se deban al uso ordinario de la vivienda. La fianza no podr\xE1 aplicarse al pago de la \xFAltima mensualidad de renta.`);
+  bloquesGarantiaYDeposito(add, datos, ARR, v, renta);
   if (c.avales.length) {
     add("subheading", c.siguiente(c.avales.length > 1 ? "Fiadores solidarios." : "Fiador solidario."));
     bloqueFiadores(add, c, objetoRef, false);
@@ -555,6 +645,7 @@ function contratoLargaDuracion(datos) {
   add("p", `Las notificaciones a ${ARR} se practicar\xE1n en la vivienda arrendada, y las dirigidas a EL ARRENDADOR, en el domicilio indicado en el encabezamiento. Ser\xE1n igualmente v\xE1lidas las comunicaciones por correo electr\xF3nico o mensajer\xEDa siempre que quede constancia de su recepci\xF3n.`);
   add("subheading", c.siguiente("Normativa aplicable y jurisdicci\xF3n."));
   add("p", "En todo lo no previsto expresamente en este contrato ser\xE1 de aplicaci\xF3n la LAU y, supletoriamente, el C\xF3digo Civil. Para cualquier controversia derivada del presente contrato ser\xE1n competentes los Juzgados y Tribunales del lugar en que radica la vivienda.");
+  bloqueClausulasExtra(add, datos, c);
   bloqueFirmas(add, datos, c);
   if (datos.conFotos) add("annex", "ANEXO I. ESTADO ACTUAL DE LA VIVIENDA");
   return L;
@@ -637,8 +728,8 @@ function firmas(doc2, s, y, hechas) {
     doc2.setFontSize(10.5);
     doc2.text(t, x, y);
   };
-  const linea = (p, x, yy) => {
-    const f = p.fid && hechas[p.fid];
+  const linea = (p2, x, yy) => {
+    const f = p2.fid && hechas[p2.fid];
     if (f?.imagen) {
       try {
         doc2.addImage(f.imagen, "PNG", x, yy - 15, 52, 14);
@@ -650,18 +741,18 @@ function firmas(doc2, s, y, hechas) {
     doc2.setFontSize(9.5);
     doc2.setDrawColor(120);
     doc2.line(x, yy, x + 62, yy);
-    doc2.text(p.nombre, x, yy + 5);
+    doc2.text(p2.nombre, x, yy + 5);
   };
   cab("EL ARRENDADOR", xI);
   cab(s.inquilinos.length > 1 ? "LOS ARRENDATARIOS" : "EL ARRENDATARIO", xD);
   y += 16;
   let yI = y, yD = y;
-  s.propietarios.forEach((p) => {
-    linea(p, xI, yI);
+  s.propietarios.forEach((p2) => {
+    linea(p2, xI, yI);
     yI += 18;
   });
-  s.inquilinos.forEach((p) => {
-    linea(p, xD, yD);
+  s.inquilinos.forEach((p2) => {
+    linea(p2, xD, yD);
     yD += 18;
   });
   y = Math.max(yI, yD) + 4;
@@ -737,9 +828,9 @@ async function construirPdf(bloques, fotos, firmasHechas = null, registro = null
   const { PDFDocument } = window.PDFLib;
   const final = await PDFDocument.create();
   const contrato = await PDFDocument.load(base);
-  (await final.copyPages(contrato, contrato.getPageIndices())).forEach((p) => final.addPage(p));
+  (await final.copyPages(contrato, contrato.getPageIndices())).forEach((p2) => final.addPage(p2));
   const anexo = await PDFDocument.load(fotos, { ignoreEncryption: true });
-  (await final.copyPages(anexo, anexo.getPageIndices())).forEach((p) => final.addPage(p));
+  (await final.copyPages(anexo, anexo.getPageIndices())).forEach((p2) => final.addPage(p2));
   return await final.save();
 }
 function descargar(bytes, nombre) {
@@ -752,7 +843,18 @@ function descargar(bytes, nombre) {
 }
 
 // js/drive.js
-var SCOPE = "https://www.googleapis.com/auth/drive";
+var SCOPES = {
+  propia: "https://www.googleapis.com/auth/drive.file",
+  completo: "https://www.googleapis.com/auth/drive"
+};
+var MODO = "propia";
+function configurar(modo2) {
+  MODO = modo2 === "completo" ? "completo" : "propia";
+}
+function modo() {
+  return MODO;
+}
+var tokens = {};
 var token = null;
 var caduca = 0;
 function esperar(cond, ms = 8e3) {
@@ -766,22 +868,36 @@ function esperar(cond, ms = 8e3) {
   });
 }
 async function obtenerToken() {
-  if (token && Date.now() < caduca - 6e4) return token;
+  const t0 = tokens[MODO];
+  if (t0 && Date.now() < t0.caduca - 6e4) {
+    token = t0.token;
+    return token;
+  }
   await esperar(() => window.google?.accounts?.oauth2);
   return new Promise((ok, ko) => {
     const cliente = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.googleClientId,
-      scope: SCOPE,
+      scope: SCOPES[MODO],
       callback: (r) => {
         if (r.error) return ko(new Error(r.error));
+        tokens[MODO] = { token: r.access_token, caduca: Date.now() + r.expires_in * 1e3 };
         token = r.access_token;
-        caduca = Date.now() + r.expires_in * 1e3;
+        caduca = tokens[MODO].caduca;
         ok(token);
       },
       error_callback: (e) => ko(new Error(e?.message || "Permiso de Drive cancelado"))
     });
     cliente.requestAccessToken({ prompt: "" });
   });
+}
+async function crearCarpeta(nombre, padre = "root") {
+  if (DEMO) return { id: "demo-" + nombre, name: nombre };
+  const c = await api2(`https://www.googleapis.com/drive/v3/files?fields=id,name&${COMUNES}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: nombre, mimeType: "application/vnd.google-apps.folder", parents: [padre] })
+  });
+  return c.json();
 }
 async function api2(url, opciones = {}) {
   const t = await obtenerToken();
@@ -916,6 +1032,258 @@ async function descargarArchivo(id) {
   return r.arrayBuffer();
 }
 
+// js/cuenta.js
+var CID = null;
+function fijarCuenta(id) {
+  CID = id;
+}
+var D = (...segs) => doc(db, "cuentas", CID, ...segs);
+var C = (...segs) => collection(db, "cuentas", CID, ...segs);
+var emailDe = (u) => String(u.email || "").toLowerCase();
+async function resolverCuenta(u) {
+  const ref = doc(db, "usuarios", u.uid);
+  const email = emailDe(u);
+  const acc = await getDoc(doc(db, "accesos", email)).catch(() => null);
+  if (acc?.exists()) {
+    const cid2 = acc.data().cuentaId;
+    await updateDoc(doc(db, "cuentas", cid2), { miembros: arrayUnion(u.uid), ["correos." + u.uid]: email });
+    await setDoc(ref, { cuentaId: cid2, email, desde: serverTimestamp() });
+    await deleteDoc(doc(db, "accesos", email)).catch(() => {
+    });
+    return { cuentaId: cid2, nueva: false };
+  }
+  const s = await getDoc(ref);
+  if (s.exists() && s.data().cuentaId) {
+    const cid2 = s.data().cuentaId;
+    const c = await getDoc(doc(db, "cuentas", cid2)).catch(() => null);
+    if (c?.exists() && (c.data().miembros || []).includes(u.uid)) return { cuentaId: cid2, nueva: false };
+  }
+  const propia = await getDoc(doc(db, "cuentas", u.uid)).catch(() => null);
+  if (propia?.exists()) {
+    await setDoc(ref, { cuentaId: u.uid, email, desde: serverTimestamp() });
+    return { cuentaId: u.uid, nueva: false };
+  }
+  const cid = u.uid;
+  await setDoc(doc(db, "cuentas", cid), {
+    nombre: u.displayName || email,
+    propietario: u.uid,
+    miembros: [u.uid],
+    emailsMiembros: [email],
+    correos: { [u.uid]: email },
+    creada: serverTimestamp(),
+    plan: "prueba"
+  });
+  await setDoc(ref, { cuentaId: cid, email, desde: serverTimestamp() });
+  fijarCuenta(cid);
+  const migrados = DEMO ? false : await migrarDatosAntiguos(cid).catch((e) => {
+    console.warn("migraci\xF3n", e);
+    return false;
+  });
+  return { cuentaId: cid, nueva: !migrados };
+}
+var COLECCIONES = ["pisos", "invitaciones", "contratos", "facturas"];
+var SUB = { invitaciones: ["respuestas"], contratos: ["firmas", "estados"] };
+async function migrarDatosAntiguos(cid) {
+  let viejo;
+  try {
+    viejo = await getDoc(doc(db, "ajustes", "general"));
+  } catch {
+    return false;
+  }
+  if (!viejo.exists() || viejo.data().migradoA) return false;
+  await setDoc(doc(db, "cuentas", cid, "ajustes", "general"), { ...viejo.data(), modoDrive: "completo" });
+  for (const col of COLECCIONES) {
+    const s = await getDocs(collection(db, col));
+    for (const d of s.docs) {
+      await setDoc(doc(db, "cuentas", cid, col, d.id), d.data());
+      if (col === "invitaciones") await setDoc(doc(db, "enlaces", d.id), { cuentaId: cid });
+      for (const sub of SUB[col] || []) {
+        const ss = await getDocs(collection(db, col, d.id, sub));
+        for (const x of ss.docs) await setDoc(doc(db, "cuentas", cid, col, d.id, sub, x.id), x.data());
+      }
+    }
+  }
+  await updateDoc(doc(db, "ajustes", "general"), { migradoA: cid, migradoEl: serverTimestamp() });
+  return true;
+}
+async function leerCuenta() {
+  const s = await getDoc(doc(db, "cuentas", CID));
+  return s.exists() ? s.data() : null;
+}
+async function invitarMiembro(email) {
+  email = email.trim().toLowerCase();
+  await updateDoc(doc(db, "cuentas", CID), { emailsMiembros: arrayUnion(email) });
+  await setDoc(doc(db, "accesos", email), { cuentaId: CID, invitadoEl: serverTimestamp() });
+}
+async function quitarMiembro(email, cuenta) {
+  email = email.trim().toLowerCase();
+  const correos = { ...cuenta.correos || {} };
+  const uid = Object.keys(correos).find((k) => correos[k] === email);
+  if (uid) delete correos[uid];
+  await updateDoc(doc(db, "cuentas", CID), {
+    emailsMiembros: (cuenta.emailsMiembros || []).filter((e) => e !== email),
+    miembros: (cuenta.miembros || []).filter((m) => m !== uid),
+    correos
+  });
+  await deleteDoc(doc(db, "accesos", email)).catch(() => {
+  });
+}
+async function cuentaDeEnlace(token2) {
+  const s = await getDoc(doc(db, "enlaces", token2)).catch(() => null);
+  return s?.exists() ? s.data().cuentaId : null;
+}
+
+// js/legal.js
+var T = () => ({
+  app: CONFIG.nombreApp || "Contratos de alquiler",
+  nombre: CONFIG.titular?.nombre || "[NOMBRE O RAZ\xD3N SOCIAL DEL TITULAR]",
+  nif: CONFIG.titular?.nif || "[NIF]",
+  domicilio: CONFIG.titular?.domicilio || "[DOMICILIO]",
+  email: CONFIG.titular?.email || "[EMAIL DE CONTACTO]",
+  web: location.origin + location.pathname,
+  fecha: CONFIG.titular?.fechaTextos || "octubre de 2026"
+});
+var h = (t) => `<h2 style="font-size:19px;margin-top:8px">${t}</h2>`;
+var p = (t) => `<p style="margin:0;line-height:1.6">${t}</p>`;
+var ul = (xs) => `<ul style="margin:0;padding-left:20px;line-height:1.6;display:flex;flex-direction:column;gap:4px">${xs.map((x) => `<li>${x}</li>`).join("")}</ul>`;
+var LEGALES = {
+  aviso: "Aviso legal",
+  privacidad: "Pol\xEDtica de privacidad",
+  terminos: "Condiciones de uso",
+  encargo: "Contrato de encargo del tratamiento",
+  inquilinos: "Informaci\xF3n para inquilinos y avalistas"
+};
+function TEXTO_CONSENTIMIENTO(arrendadores) {
+  return `He le\xEDdo la <a href="#/legal/inquilinos" target="_blank" rel="noopener">informaci\xF3n sobre protecci\xF3n de datos</a>. Mis datos y los de mis avalistas los trata ${arrendadores || "el arrendador"} para preparar, firmar y gestionar el contrato de alquiler. Declaro que mis avalistas conocen y aceptan que facilito sus datos con esta finalidad.`;
+}
+function paginaLegal(slug2) {
+  const t = T();
+  switch (slug2) {
+    case "aviso":
+      return [
+        p(`En cumplimiento del art\xEDculo 10 de la Ley 34/2002, de servicios de la sociedad de la informaci\xF3n y de comercio electr\xF3nico (LSSI-CE), se informa de que el titular de ${t.app}, accesible en ${t.web}, es ${t.nombre}, con NIF ${t.nif} y domicilio en ${t.domicilio}. Contacto: ${t.email}.`),
+        h("Objeto"),
+        p(`${t.app} es una herramienta para que propietarios de viviendas recojan los datos de sus inquilinos, generen contratos de arrendamiento a partir de modelos, los firmen electr\xF3nicamente y archiven contratos y facturas en su propio Google Drive.`),
+        h("Responsabilidad"),
+        p(`Los modelos de contrato son plantillas orientativas basadas en la Ley 29/1994 de Arrendamientos Urbanos. No constituyen asesoramiento jur\xEDdico. Cada propietario es responsable de revisar el contenido de sus contratos, adaptarlo a su caso y a la normativa de su comunidad aut\xF3noma, y de los datos que introduce.`),
+        h("Propiedad intelectual"),
+        p(`El c\xF3digo, el dise\xF1o y los textos de la aplicaci\xF3n pertenecen a su titular o se usan con licencia. Los contratos generados pertenecen a quienes los suscriben.`),
+        h("Legislaci\xF3n aplicable"),
+        p(`Este aviso se rige por la legislaci\xF3n espa\xF1ola.`)
+      ].join("");
+    case "privacidad":
+      return [
+        p(`\xDAltima actualizaci\xF3n: ${t.fecha}.`),
+        h("1. Qui\xE9n trata tus datos"),
+        p(`Hay dos situaciones distintas:`),
+        ul([
+          `<b>Si eres usuario de la app (propietario):</b> el responsable de tus datos de cuenta es ${t.nombre} (NIF ${t.nif}, ${t.domicilio}, ${t.email}).`,
+          `<b>Si eres inquilino o avalista:</b> el responsable es el propietario que te ha enviado el enlace. ${t.nombre} act\xFAa solo como encargado del tratamiento por cuenta de ese propietario. Consulta la <a href="#/legal/inquilinos">informaci\xF3n para inquilinos</a>.`
+        ]),
+        h("2. Qu\xE9 datos tratamos"),
+        ul([
+          `Datos de la cuenta: nombre y email de tu cuenta de Google y los miembros de tu equipo.`,
+          `Datos que introduces para los contratos: nombre, documento de identidad, domicilio, IBAN y datos de tus viviendas.`,
+          `Datos de inquilinos y avalistas: nombre, tipo y n\xFAmero de documento, domicilio, tel\xE9fono, email, parentesco, firma manuscrita digitalizada, fecha y hora de firma e informaci\xF3n t\xE9cnica del dispositivo con el que se firma.`,
+          `Registro de facturas: proveedor, concepto, fecha e importe. Los archivos se guardan en tu Google Drive, no en nuestros servidores.`
+        ]),
+        h("3. Para qu\xE9 y con qu\xE9 base legal"),
+        ul([
+          `Prestarte el servicio (art. 6.1.b RGPD: ejecuci\xF3n del contrato de uso de la app).`,
+          `Atender tus solicitudes y comunicaciones del servicio (art. 6.1.b RGPD).`,
+          `Cumplir obligaciones legales, por ejemplo fiscales si hay facturaci\xF3n (art. 6.1.c RGPD).`,
+          `Seguridad e integridad del servicio y prevenci\xF3n del fraude (art. 6.1.f RGPD: inter\xE9s leg\xEDtimo).`
+        ]),
+        p(`No usamos tus datos ni los de tus inquilinos para publicidad, no elaboramos perfiles y no vendemos datos a terceros.`),
+        h("4. D\xF3nde se guardan y qui\xE9n m\xE1s interviene"),
+        ul([
+          `Google Cloud / Firebase (Google Ireland Ltd.): base de datos e inicio de sesi\xF3n. La base de datos se aloja en la regi\xF3n europe-southwest1 (Madrid).`,
+          `Google Drive de cada propietario: los PDF de contratos y las facturas se guardan en el Drive del propio usuario, bajo su control.`,
+          `GitHub Pages (GitHub, Inc.): alojamiento de la web. Puede registrar direcciones IP por motivos t\xE9cnicos y de seguridad.`
+        ]),
+        p(`Algunos de estos proveedores pertenecen a grupos con sede en EE. UU. Las transferencias internacionales que puedan producirse se amparan en el Marco de Privacidad de Datos UE-EE. UU. o en cl\xE1usulas contractuales tipo de la Comisi\xF3n Europea.`),
+        h("5. Cu\xE1nto tiempo"),
+        p(`Los datos de tu cuenta se conservan mientras la mantengas. Puedes borrar tu cuenta y todos sus datos desde Ajustes. Los datos de inquilinos se conservan el tiempo que decida su propietario. Recomendamos borrarlos al terminar el contrato, una vez pasados los plazos legales de prescripci\xF3n de las acciones derivadas del arrendamiento. Tras borrar una cuenta, las copias de seguridad t\xE9cnicas del proveedor se eliminan en sus plazos ordinarios.`),
+        h("6. Tus derechos"),
+        p(`Puedes ejercer los derechos de acceso, rectificaci\xF3n, supresi\xF3n, oposici\xF3n, limitaci\xF3n y portabilidad escribiendo a ${t.email}. Desde Ajustes puedes adem\xE1s descargar una copia de tus datos y borrar tu cuenta. Si eres inquilino, dir\xEDgete primero a tu arrendador, que es el responsable. Si consideras que no se han atendido tus derechos, puedes reclamar ante la Agencia Espa\xF1ola de Protecci\xF3n de Datos (www.aepd.es).`),
+        h("7. Almacenamiento en el navegador"),
+        p(`La app usa almacenamiento t\xE9cnico del navegador (sesi\xF3n de inicio de Google y borradores del formulario del inquilino). Es imprescindible para el funcionamiento y no se usa para anal\xEDtica ni publicidad, por lo que no requiere consentimiento.`),
+        h("8. Seguridad"),
+        p(`El acceso a los datos de cada cuenta est\xE1 restringido a sus miembros mediante reglas de seguridad de la base de datos. Cada inquilino accede solo a su propio formulario y contrato mediante un enlace \xFAnico. Las comunicaciones van cifradas (HTTPS).`)
+      ].join("");
+    case "terminos":
+      return [
+        p(`\xDAltima actualizaci\xF3n: ${t.fecha}. Al crear una cuenta en ${t.app} aceptas estas condiciones.`),
+        h("1. El servicio"),
+        p(`${t.app} permite gestionar pisos, invitar a inquilinos a rellenar sus datos, generar contratos a partir de modelos, firmarlos electr\xF3nicamente y archivar documentos en tu Google Drive.`),
+        h("2. Tu cuenta"),
+        p(`Accedes con tu cuenta de Google. Eres responsable de su uso y de los miembros que a\xF1adas a tu equipo, que tendr\xE1n acceso a todos los datos de la cuenta.`),
+        h("3. Tus obligaciones"),
+        ul([
+          `Introducir datos veraces y tener base legal para tratar los datos de tus inquilinos y avalistas: normalmente, la preparaci\xF3n y ejecuci\xF3n del contrato de arrendamiento.`,
+          `Informar a tus inquilinos de que usas esta herramienta. La app les muestra la informaci\xF3n b\xE1sica antes de enviar sus datos.`,
+          `Revisar cada contrato antes de enviarlo a firmar. Los modelos son orientativos y no sustituyen el asesoramiento jur\xEDdico.`,
+          `Cumplir la normativa aplicable a tus arrendamientos, como el dep\xF3sito de la fianza en tu comunidad aut\xF3noma o las obligaciones fiscales.`
+        ]),
+        h("4. Firma electr\xF3nica"),
+        p(`La firma en la app es una firma electr\xF3nica simple (Reglamento (UE) 910/2014, eIDAS). Registra la firma manuscrita digitalizada, la aceptaci\xF3n expresa, la fecha y hora y una huella criptogr\xE1fica del texto firmado. Es v\xE1lida para contratos de arrendamiento, pero su valor como prueba lo decide, en su caso, un juez. Para operaciones que lo requieran, usa firma electr\xF3nica avanzada o cualificada.`),
+        h("5. Protecci\xF3n de datos"),
+        p(`Respecto a los datos de tus inquilinos, t\xFA eres el responsable del tratamiento y ${t.nombre} act\xFAa como encargado seg\xFAn el <a href="#/legal/encargo">contrato de encargo del tratamiento</a>, que aceptas junto con estas condiciones.`),
+        h("6. Precio"),
+        p(`Las condiciones econ\xF3micas, si las hay, se informar\xE1n antes de contratar. Durante el periodo de prueba el servicio es gratuito.`),
+        h("7. Disponibilidad y responsabilidad"),
+        p(`Ponemos los medios razonables para que el servicio funcione, pero no garantizamos que est\xE9 libre de interrupciones. ${t.nombre} no responde del contenido de los contratos que generes ni de su adecuaci\xF3n a tu caso, ni de la p\xE9rdida de archivos guardados en tu Google Drive. Te recomendamos conservar copias.`),
+        h("8. Baja"),
+        p(`Puedes borrar tu cuenta en cualquier momento desde Ajustes. Podemos suspender cuentas que hagan un uso il\xEDcito del servicio.`),
+        h("9. Ley y jurisdicci\xF3n"),
+        p(`Se aplica la ley espa\xF1ola. Si eres consumidor, son competentes los tribunales de tu domicilio.`)
+      ].join("");
+    case "encargo":
+      return [
+        p(`Contrato de encargo del tratamiento conforme al art\xEDculo 28 del Reglamento (UE) 2016/679 (RGPD), entre el usuario de ${t.app} (el <b>Responsable</b>) y ${t.nombre}, NIF ${t.nif} (el <b>Encargado</b>). Se acepta al crear la cuenta.`),
+        h("1. Objeto"),
+        p(`El Encargado trata por cuenta del Responsable los datos personales de sus inquilinos, avalistas y dem\xE1s personas que figuren en los contratos, con la \xFAnica finalidad de prestar el servicio de ${t.app}: recogida de datos, generaci\xF3n de contratos, firma electr\xF3nica y archivo.`),
+        h("2. Datos y personas afectadas"),
+        p(`Identificativos (nombre, documento de identidad, domicilio, tel\xE9fono, email), firma manuscrita digitalizada, datos del contrato (renta, fianza, fechas) y datos t\xE9cnicos de firma. Afecta a inquilinos, avalistas y copropietarios.`),
+        h("3. Duraci\xF3n"),
+        p(`Mientras el Responsable mantenga su cuenta. Al darse de baja, el Encargado suprimir\xE1 los datos de la base de datos. Los documentos del Google Drive del Responsable quedan bajo su control.`),
+        h("4. Obligaciones del Encargado"),
+        ul([
+          `Tratar los datos solo seg\xFAn las instrucciones documentadas del Responsable, que son las propias del funcionamiento de la app.`,
+          `Garantizar la confidencialidad de las personas autorizadas a tratarlos.`,
+          `Aplicar medidas de seguridad adecuadas (art. 32 RGPD): control de acceso por cuenta, enlaces \xFAnicos, cifrado en tr\xE1nsito y alojamiento en la UE.`,
+          `No subcontratar sin autorizaci\xF3n. El Responsable autoriza a Google (Firebase/Google Cloud) y GitHub (alojamiento web) como subencargados. Cualquier cambio se informar\xE1 con antelaci\xF3n para que pueda oponerse.`,
+          `Ayudar al Responsable a atender los derechos de los interesados y a cumplir sus obligaciones de seguridad, notificaci\xF3n de brechas y evaluaciones de impacto.`,
+          `Notificar sin dilaci\xF3n indebida, y en todo caso antes de 48 horas, cualquier violaci\xF3n de seguridad de la que tenga conocimiento.`,
+          `Suprimir o devolver los datos al terminar el servicio, salvo obligaci\xF3n legal de conservarlos.`,
+          `Poner a disposici\xF3n del Responsable la informaci\xF3n necesaria para demostrar el cumplimiento.`
+        ]),
+        h("5. Obligaciones del Responsable"),
+        ul([
+          `Disponer de base legal para el tratamiento y facilitar a los interesados la informaci\xF3n del art\xEDculo 13 RGPD (la app la muestra antes de enviar los datos).`,
+          `Velar por el cumplimiento del RGPD y supervisar el tratamiento.`
+        ])
+      ].join("");
+    case "inquilinos":
+      return [
+        p(`Esta informaci\xF3n se te da antes de enviar tus datos a trav\xE9s de ${t.app}, conforme al art\xEDculo 13 del RGPD.`),
+        h("Responsable"),
+        p(`El propietario (arrendador) que te ha enviado el enlace. Sus datos de identificaci\xF3n y contacto figuran en el contrato. ${t.nombre} (${t.email}) proporciona la herramienta y act\xFAa como encargado del tratamiento.`),
+        h("Finalidad y base legal"),
+        p(`Preparar, firmar y gestionar tu contrato de arrendamiento y su fianza. La base legal es la aplicaci\xF3n de medidas precontractuales y la ejecuci\xF3n del contrato (art. 6.1.b RGPD). Para los avalistas, el inter\xE9s leg\xEDtimo del arrendador en garantizar el contrato (art. 6.1.f RGPD). Quien facilita los datos de sus avalistas declara haberles informado.`),
+        h("Datos"),
+        p(`Nombre, documento de identidad, domicilio, tel\xE9fono, email, parentesco de los avalistas, firma manuscrita digitalizada, fecha y hora de firma y datos t\xE9cnicos del dispositivo con el que firmas.`),
+        h("Destinatarios"),
+        p(`El arrendador y su equipo. Los proveedores t\xE9cnicos del servicio (Google, con alojamiento en la UE). Los organismos p\xFAblicos cuando la ley lo exija, como el registro de fianzas de la comunidad aut\xF3noma o la Administraci\xF3n tributaria.`),
+        h("Conservaci\xF3n"),
+        p(`Durante la vigencia del contrato y, despu\xE9s, durante los plazos legales de prescripci\xF3n de las acciones derivadas del arrendamiento.`),
+        h("Derechos"),
+        p(`Puedes pedir al arrendador el acceso, la rectificaci\xF3n, la supresi\xF3n, la oposici\xF3n, la limitaci\xF3n y la portabilidad de tus datos. Tambi\xE9n puedes reclamar ante la Agencia Espa\xF1ola de Protecci\xF3n de Datos (www.aepd.es).`)
+      ].join("");
+  }
+  return p("P\xE1gina no encontrada.");
+}
+
 // js/app.js
 var app = document.getElementById("app");
 var usuario = null;
@@ -924,19 +1292,24 @@ var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<"
 var $ = (sel, root = document) => root.querySelector(sel);
 var $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 var hoyISO = () => (/* @__PURE__ */ new Date()).toLocaleDateString("sv-SE");
-var accesoComprobado = { uid: null, ok: false };
-async function comprobarPropietario() {
+var cuentaLista = { uid: null, ok: false, nueva: false };
+async function prepararCuenta() {
   if (!usuario) return false;
-  if (accesoComprobado.uid === usuario.uid) return accesoComprobado.ok;
-  let ok = false;
+  if (cuentaLista.uid === usuario.uid) return cuentaLista.ok;
   try {
-    await getDoc(doc(db, "ajustes", "general"));
-    ok = true;
+    const r = await resolverCuenta(usuario);
+    fijarCuenta(r.cuentaId);
+    cuentaLista = { uid: usuario.uid, ok: true, nueva: r.nueva };
   } catch (e) {
-    ok = false;
+    console.error(e);
+    cuentaLista = { uid: usuario.uid, ok: false, error: e.message };
   }
-  accesoComprobado = { uid: usuario.uid, ok };
-  return ok;
+  return cuentaLista.ok;
+}
+function saludoDe(ajustes) {
+  const nombres = (ajustes.propietarios || []).map((p2) => (p2.apodo || p2.nombre || "").trim().split(/\s+/)[0]).filter(Boolean);
+  if (!nombres.length) return usuario?.displayName?.split(" ")[0] || "";
+  return nombres.length === 1 ? nombres[0] : nombres.slice(0, -1).join(", ") + " y " + nombres[nombres.length - 1];
 }
 function aviso(msg, error = false) {
   const el = document.getElementById("aviso");
@@ -1029,27 +1402,41 @@ function pintar(html, activa) {
   window.scrollTo(0, 0);
 }
 async function leerAjustes() {
-  const s = await getDoc(doc(db, "ajustes", "general"));
-  return s.exists() ? s.data() : {
-    propietarios: [
-      { tratamiento: "D.", nombre: "", tipoDoc: "DNI", numDoc: "" },
-      { tratamiento: "D\xF1a.", nombre: "", tipoDoc: "DNI", numDoc: "" }
-    ],
+  const s = await getDoc(D("ajustes", "general"));
+  const a = s.exists() ? s.data() : {
+    propietarios: [{ tratamiento: "", nombre: usuario?.displayName || "", tipoDoc: "DNI", numDoc: "" }],
     domicilio: "",
     iban: "",
-    ciudadFirma: "C\xF3rdoba"
+    ciudadFirma: "",
+    modoDrive: "propia",
+    condiciones: {}
   };
+  configurar(a.modoDrive || "propia");
+  return a;
+}
+function ajustesCompletos(a) {
+  return !!(a.propietarios?.length && a.propietarios.every((p2) => p2.nombre && p2.numDoc) && a.iban && a.domicilio);
+}
+async function raizDrive(ajustes) {
+  configurar(ajustes.modoDrive || "propia");
+  if (ajustes.carpetaDriveId) return ajustes.carpetaDriveId;
+  if ((ajustes.modoDrive || "propia") !== "propia") return null;
+  const r = await crearCarpeta(CONFIG.carpetaRaiz || "Alquileres");
+  ajustes.carpetaDriveId = r.id;
+  ajustes.carpetaDriveNombre = r.name;
+  await setDoc(D("ajustes", "general"), { carpetaDriveId: r.id, carpetaDriveNombre: r.name }, { merge: true });
+  return r.id;
 }
 async function listar(col, orden = "creada") {
-  const s = await getDocs(query(collection(db, col), orderBy(orden, "desc")));
+  const s = await getDocs(query(C(col), orderBy(orden, "desc")));
   return s.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 async function listarPisos() {
-  const s = await getDocs(query(collection(db, "pisos"), orderBy("nombre")));
+  const s = await getDocs(query(C("pisos"), orderBy("nombre")));
   return s.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 async function respuestasDe(invId) {
-  const s = await getDocs(query(collection(db, "invitaciones", invId, "respuestas"), orderBy("enviada")));
+  const s = await getDocs(query(C("invitaciones", invId, "respuestas"), orderBy("enviada")));
   return s.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 function campo(etq, name, valor = "", extra = "") {
@@ -1062,15 +1449,15 @@ function segmento(name, opciones, valor) {
 function selectDoc(name, valor = "DNI") {
   return `<label class="campo">Documento<select name="${name}">${["DNI", "NIE", "Pasaporte", "Otro"].map((t) => `<option ${t === valor ? "selected" : ""}>${t}</option>`).join("")}</select></label>`;
 }
-function camposPersona(pre, p = {}, { contacto = false, domicilio = false, parentesco = false } = {}) {
+function camposPersona(pre, p2 = {}, { contacto = false, domicilio = false, parentesco = false } = {}) {
   return `
     <div class="eti-campo" style="text-transform:none;letter-spacing:0;font-weight:400">Tratamiento en el contrato</div>
-    ${segmento(`${pre}tratamiento`, [["D.", "D."], ["D\xF1a.", "D\xF1a."]], p.tratamiento || "")}
-    ${parentesco ? campo("Parentesco (madre, padre, hermano\u2026)", `${pre}parentesco`, p.parentesco || "") : ""}
-    ${campo("Nombre y apellidos", `${pre}nombre`, p.nombre, 'autocomplete="off" placeholder="Como aparece en el documento"')}
-    <div class="rejilla doc">${selectDoc(`${pre}tipoDoc`, p.tipoDoc)}${campo("N\xFAmero", `${pre}numDoc`, p.numDoc, 'autocapitalize="characters" placeholder="12345678A"')}</div>
-    ${domicilio ? campo("Domicilio habitual", `${pre}domicilio`, p.domicilio, 'placeholder="Calle, n\xFAmero, piso, c\xF3digo postal y ciudad"') : ""}
-    ${contacto ? `<div class="rejilla">${campo("Tel\xE9fono", `${pre}telefono`, p.telefono, 'type="tel" placeholder="600 000 000"')}${campo("Email", `${pre}email`, p.email, 'type="email" placeholder="tu@email.com"')}</div>` : ""}`;
+    ${segmento(`${pre}tratamiento`, [["D.", "D."], ["D\xF1a.", "D\xF1a."]], p2.tratamiento || "")}
+    ${parentesco ? campo("Parentesco (madre, padre, hermano\u2026)", `${pre}parentesco`, p2.parentesco || "") : ""}
+    ${campo("Nombre y apellidos", `${pre}nombre`, p2.nombre, 'autocomplete="off" placeholder="Como aparece en el documento"')}
+    <div class="rejilla doc">${selectDoc(`${pre}tipoDoc`, p2.tipoDoc)}${campo("N\xFAmero", `${pre}numDoc`, p2.numDoc, 'autocapitalize="characters" placeholder="12345678A"')}</div>
+    ${domicilio ? campo("Domicilio habitual", `${pre}domicilio`, p2.domicilio, 'placeholder="Calle, n\xFAmero, piso, c\xF3digo postal y ciudad"') : ""}
+    ${contacto ? `<div class="rejilla">${campo("Tel\xE9fono", `${pre}telefono`, p2.telefono, 'type="tel" placeholder="600 000 000"')}${campo("Email", `${pre}email`, p2.email, 'type="email" placeholder="tu@email.com"')}</div>` : ""}`;
 }
 function leerPersona(root, pre) {
   const v = (n) => (root.querySelector(`[name="${pre}${n}"]`)?.value ?? "").trim();
@@ -1085,13 +1472,13 @@ function leerPersona(root, pre) {
     parentesco: v("parentesco")
   };
 }
-function validarPersona(root, pre, p, { domicilio = false } = {}) {
+function validarPersona(root, pre, p2, { domicilio = false } = {}) {
   const errores = {};
-  if (!p.tratamiento) errores.tratamiento = "Elige D. o D\xF1a.";
-  if (p.nombre.split(/\s+/).length < 2) errores.nombre = "Escribe nombre y apellidos";
-  const e = validarDoc(p.tipoDoc, p.numDoc);
+  if (!p2.tratamiento) errores.tratamiento = "Elige D. o D\xF1a.";
+  if (p2.nombre.split(/\s+/).length < 2) errores.nombre = "Escribe nombre y apellidos";
+  const e = validarDoc(p2.tipoDoc, p2.numDoc);
   if (e) errores.numDoc = e;
-  if (domicilio && p.domicilio.length < 8) errores.domicilio = "Escribe el domicilio completo";
+  if (domicilio && p2.domicilio.length < 8) errores.domicilio = "Escribe el domicilio completo";
   $$(`[data-error^="${pre}"]`, root).forEach((el) => el.textContent = "");
   Object.entries(errores).forEach(([k, msg]) => {
     const el = root.querySelector(`[data-error="${pre}${k}"]`);
@@ -1112,24 +1499,12 @@ function activarSegmentos(root = app) {
     });
   });
 }
-async function vistaLogin() {
-  pintar(`<div class="login">
-    <h1>Contratos</h1>
-    <p class="ayuda">Entra con tu cuenta de Google para gestionar los pisos y los contratos.</p>
-    ${usuario ? `<p class="ayuda" style="color:#A2321F">La cuenta ${esc(usuario.email)} no tiene acceso.</p>` : ""}
-    <button class="btn primario" id="entrar">Entrar con Google</button>
-    ${usuario ? '<button class="btn peligro" id="salir">Usar otra cuenta</button>' : ""}
-  </div>`);
-  $("#entrar").onclick = async () => {
-    try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-    } catch (e) {
-      aviso("No se pudo iniciar sesi\xF3n: " + e.message, true);
-    }
-  };
-  if ($("#salir")) $("#salir").onclick = () => signOut(auth);
-}
 async function vistaPanel() {
+  const ajustesPanel = await leerAjustes();
+  if (!ajustesCompletos(ajustesPanel)) {
+    location.hash = "#/bienvenida";
+    return;
+  }
   const [pisos, invs, contratos] = await Promise.all([listarPisos(), listar("invitaciones"), listar("contratos")]);
   const abiertas = invs.filter((i) => i.estado === "abierta");
   await Promise.all(abiertas.map(async (i) => {
@@ -1143,15 +1518,15 @@ async function vistaPanel() {
   }));
   const hoy = /* @__PURE__ */ new Date();
   const fecha = `${["Domingo", "Lunes", "Martes", "Mi\xE9rcoles", "Jueves", "Viernes", "S\xE1bado"][hoy.getDay()]}, ${hoy.getDate()} de ${MESES[hoy.getMonth()]}`;
-  const estadoPiso = (p) => {
-    const ab = abiertas.filter((i) => i.pisoId === p.id).length;
-    const porFirmar = contratos.filter((c) => c.pisoId === p.id && c.estado !== "firmado").length;
+  const estadoPiso = (p2) => {
+    const ab = abiertas.filter((i) => i.pisoId === p2.id).length;
+    const porFirmar = contratos.filter((c) => c.pisoId === p2.id && c.estado !== "firmado").length;
     if (ab) return `<span class="chip espera">${ab} esperando datos</span>`;
     if (porFirmar) return `<span class="chip firma">${porFirmar} por firmar</span>`;
     return `<span class="chip ok">Al d\xEDa</span>`;
   };
   pintar(`
-    <div class="cab"><div class="fecha">${fecha}</div><h1>Hola, ${esc(CONFIG.saludo)}</h1></div>
+    <div class="cab"><div class="fecha">${fecha}</div><h1>Hola${saludoDe(ajustesPanel) ? ", " + esc(saludoDe(ajustesPanel)) : ""}</h1></div>
     <div class="stats">
       <div class="stat"><b>${pisos.length}</b><span>Pisos</span></div>
       <div class="stat"><b>${abiertas.length}</b><span>Pendientes</span></div>
@@ -1174,10 +1549,10 @@ async function vistaPanel() {
           <span class="chip ${c.nFirmas === c.firmantes.length ? "ok" : "firma"}">${c.nFirmas === c.firmantes.length ? "Listo para guardar" : `${c.nFirmas}/${c.firmantes.length} firmas`}</span></div></a>`).join("")}</div>` : ""}
     <div class="titulo-seccion"><h2>Tus pisos</h2><a href="#/pisos" style="font-size:13px;text-decoration:none">Ver todos</a></div>
     <div class="seccion">
-      ${pisos.length ? pisos.map((p) => `
-        <a class="tarjeta" href="#/piso/${p.id}"><div class="fila"><div>
-          <div class="nombre">${esc(p.nombre)}</div><div class="meta">${PLANTILLAS[p.plantilla] || ""} \xB7 ${esc(p.ciudad || "")}</div></div>
-          ${estadoPiso(p)}</div></a>`).join("") : `<div class="vacio">Todav\xEDa no hay pisos. Empieza por <a href="#/ajustes">tus datos</a> y luego <a href="#/piso/nuevo">a\xF1ade un piso</a>.</div>`}
+      ${pisos.length ? pisos.map((p2) => `
+        <a class="tarjeta" href="#/piso/${p2.id}"><div class="fila"><div>
+          <div class="nombre">${esc(p2.nombre)}</div><div class="meta">${PLANTILLAS[p2.plantilla] || ""} \xB7 ${esc(p2.ciudad || "")}</div></div>
+          ${estadoPiso(p2)}</div></a>`).join("") : `<div class="vacio">Todav\xEDa no hay pisos. Empieza por <a href="#/ajustes">tus datos</a> y luego <a href="#/piso/nuevo">a\xF1ade un piso</a>.</div>`}
     </div>
     <div class="acciones"><a class="btn primario ancho" href="#/nuevo">${ICO.mas} Nuevo inquilino</a></div>
   `, "inicio");
@@ -1197,9 +1572,9 @@ async function vistaPanel() {
 async function vistaPisos() {
   const pisos = await listarPisos();
   pintar(`${cabVolver("Pisos")}
-    <div class="seccion">${pisos.map((p) => `
-      <a class="tarjeta" href="#/piso/${p.id}"><div class="nombre">${esc(p.nombre)}</div>
-      <div class="meta">${esc(p.direccion)}</div></a>`).join("") || '<div class="vacio">Sin pisos todav\xEDa.</div>'}</div>
+    <div class="seccion">${pisos.map((p2) => `
+      <a class="tarjeta" href="#/piso/${p2.id}"><div class="nombre">${esc(p2.nombre)}</div>
+      <div class="meta">${esc(p2.direccion)}</div></a>`).join("") || '<div class="vacio">Sin pisos todav\xEDa.</div>'}</div>
     <div class="acciones"><a class="btn primario ancho" href="#/piso/nuevo">${ICO.mas} A\xF1adir piso</a></div>`, "pisos");
 }
 function camposLuz(luz = { opcion: "D" }) {
@@ -1244,28 +1619,32 @@ function leerCondiciones(root) {
   };
 }
 async function vistaPiso(id) {
+  await leerAjustes();
   const nuevo = id === "nuevo";
-  const p = nuevo ? { plantilla: "habitacion", ciudad: "C\xF3rdoba", luz: { opcion: "C" }, agua: { opcion: "cuota" } } : (await getDoc(doc(db, "pisos", id))).data();
-  if (!p) return pintar(`${cabVolver("Piso no encontrado", "", "#/pisos")}`, "pisos");
-  pintar(`${cabVolver(nuevo ? "Nuevo piso" : p.nombre, "Ficha del piso", "#/pisos")}
+  const p2 = nuevo ? { plantilla: "habitacion", ciudad: "", luz: { opcion: "C" }, agua: { opcion: "cuota" } } : (await getDoc(D("pisos", id))).data();
+  if (!p2) return pintar(`${cabVolver("Piso no encontrado", "", "#/pisos")}`, "pisos");
+  pintar(`${cabVolver(nuevo ? "Nuevo piso" : p2.nombre, "Ficha del piso", "#/pisos")}
     <form class="seccion" id="f">
-      ${campo("Nombre corto", "nombre", p.nombre, 'placeholder="Lope de Sosa"')}
-      ${campo("Direcci\xF3n completa", "direccion", p.direccion, 'placeholder="Calle, n\xFAmero, piso, CP y ciudad"')}
-      ${campo("Ciudad donde se firma", "ciudad", p.ciudad)}
+      ${campo("Nombre corto", "nombre", p2.nombre, 'placeholder="Lope de Sosa"')}
+      ${campo("Direcci\xF3n completa", "direccion", p2.direccion, 'placeholder="Calle, n\xFAmero, piso, CP y ciudad"')}
+      ${campo("Ciudad donde se firma", "ciudad", p2.ciudad)}
       <div class="eti-campo">Tipo de contrato habitual</div>
-      ${segmento("plantilla", Object.entries(PLANTILLAS), p.plantilla)}
-      ${campo("Habitaciones (separadas por comas)", "habitaciones", (p.habitaciones || []).join(", "), 'placeholder="1, 2, 3, 4"')}
-      <label class="campo">Descripci\xF3n (larga duraci\xF3n)<textarea name="descripcion" placeholder="Piso de tres dormitorios, cocina con lavadero, sal\xF3n y ba\xF1o">${esc(p.descripcion || "")}</textarea></label>
-      ${campo("Renta habitual (\u20AC)", "renta", p.renta ?? "", 'inputmode="decimal"')}
-      ${campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p.carpetaFacturas || "", 'placeholder="Piso ciudad real"')}
-      ${camposLuz(p.luz)}
-      ${camposAgua(p.agua)}
+      ${segmento("plantilla", Object.entries(PLANTILLAS), p2.plantilla)}
+      ${campo("Habitaciones (separadas por comas)", "habitaciones", (p2.habitaciones || []).join(", "), 'placeholder="1, 2, 3, 4"')}
+      <label class="campo">Descripci\xF3n (larga duraci\xF3n)<textarea name="descripcion" placeholder="Piso de tres dormitorios, cocina con lavadero, sal\xF3n y ba\xF1o">${esc(p2.descripcion || "")}</textarea></label>
+      ${campo("Renta habitual (\u20AC)", "renta", p2.renta ?? "", 'inputmode="decimal"')}
+      ${modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p2.carpetaFacturas || "", 'placeholder="Piso ciudad real"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p2.carpetaFacturas || "")}">`}
+      ${camposLuz(p2.luz)}
+      ${camposAgua(p2.agua)}
       <div class="eti-campo">Fotos del piso</div>
-      <div class="tarjeta"><div class="fila"><div><div class="nombre" id="fotos-nombre">${esc(p.fotosNombre || "Sin PDF de fotos")}</div>
+      <div class="tarjeta"><div class="fila"><div><div class="nombre" id="fotos-nombre">${esc(p2.fotosNombre || "Sin PDF de fotos")}</div>
         <div class="meta">Se a\xF1ade al final de cada contrato</div></div>
-        <button type="button" class="btn secundario" id="elegir-fotos">Elegir en Drive</button></div></div>
-      <input type="hidden" name="fotosDriveId" value="${esc(p.fotosDriveId || "")}">
-      <input type="hidden" name="fotosNombre" value="${esc(p.fotosNombre || "")}">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <label class="btn secundario" style="min-height:40px">Subir PDF<input type="file" accept="application/pdf" id="subir-fotos" hidden></label>
+          ${modo() === "completo" ? '<button type="button" class="btn secundario" id="elegir-fotos" style="min-height:40px">Elegir en Drive</button>' : ""}
+        </div></div></div>
+      <input type="hidden" name="fotosDriveId" value="${esc(p2.fotosDriveId || "")}">
+      <input type="hidden" name="fotosNombre" value="${esc(p2.fotosNombre || "")}">
     </form>
     <div class="acciones">
       <button class="btn primario ancho" id="guardar">Guardar</button>
@@ -1274,7 +1653,25 @@ async function vistaPiso(id) {
   const f = $("#f");
   activarSegmentos(f);
   activarLuz(f);
-  $("#elegir-fotos").onclick = async () => {
+  $("#subir-fotos").onchange = async (e) => {
+    const archivo = e.target.files[0];
+    if (!archivo) return;
+    try {
+      aviso("Subiendo fotos\u2026");
+      const ajustes = await leerAjustes();
+      const raiz = await raizDrive(ajustes);
+      if (!raiz) return aviso("Configura Google Drive en Ajustes", true);
+      const carpeta = await asegurarCarpeta(["Fotos de los pisos"], raiz);
+      const r = await subirPdf(await archivo.arrayBuffer(), archivo.name, carpeta);
+      f.fotosDriveId.value = r.id;
+      f.fotosNombre.value = archivo.name;
+      $("#fotos-nombre").textContent = archivo.name;
+      aviso("Fotos subidas. Pulsa Guardar.");
+    } catch (err) {
+      aviso("No se pudo subir: " + err.message, true);
+    }
+  };
+  if ($("#elegir-fotos")) $("#elegir-fotos").onclick = async () => {
     try {
       const r = await elegir("pdf");
       if (!r) return;
@@ -1302,14 +1699,14 @@ async function vistaPiso(id) {
       fotosNombre: v("fotosNombre"),
       actualizado: serverTimestamp()
     };
-    if (nuevo) await addDoc(collection(db, "pisos"), datos);
-    else await setDoc(doc(db, "pisos", id), datos, { merge: true });
+    if (nuevo) await addDoc(C("pisos"), datos);
+    else await setDoc(D("pisos", id), datos, { merge: true });
     aviso("Piso guardado");
     location.hash = "#/pisos";
   };
   if ($("#borrar")) $("#borrar").onclick = async () => {
     if (!preguntar("\xBFEliminar este piso? Los contratos ya generados se mantienen.")) return;
-    await deleteDoc(doc(db, "pisos", id));
+    await deleteDoc(D("pisos", id));
     location.hash = "#/pisos";
   };
 }
@@ -1320,7 +1717,7 @@ function fechasPorDefecto(plantilla) {
   return { inicio: `${y}-09-01`, fin: `${y + 1}-07-31` };
 }
 async function vistaNueva() {
-  const pisos = await listarPisos();
+  const [pisos, ajustesNueva] = await Promise.all([listarPisos(), leerAjustes()]);
   if (!pisos.length) return pintar(`${cabVolver("Nuevo inquilino")}<div class="vacio">Primero <a href="#/piso/nuevo">a\xF1ade un piso</a>.</div>`, "inicio");
   let piso = pisos[0];
   const formulario = () => {
@@ -1330,7 +1727,7 @@ async function vistaNueva() {
       <div class="eti-campo">Modalidad</div>
       ${segmento("plantilla", Object.entries(PLANTILLAS), pl)}
       ${pl === "habitacion" ? `<div class="rejilla">
-          <label class="campo">Habitaci\xF3n<select name="habitacion">${(piso.habitaciones?.length ? piso.habitaciones : ["1", "2", "3", "4"]).map((h) => `<option>${esc(h)}</option>`).join("")}</select></label>
+          <label class="campo">Habitaci\xF3n<select name="habitacion">${(piso.habitaciones?.length ? piso.habitaciones : ["1", "2", "3", "4"]).map((h2) => `<option>${esc(h2)}</option>`).join("")}</select></label>
           ${campo("Renta mensual (\u20AC)", "renta", piso.renta ?? "", 'inputmode="decimal"')}</div>` : `<div class="rejilla">${campo("Renta mensual (\u20AC)", "renta", piso.renta ?? "", 'inputmode="decimal"')}
           ${campo("N\xBA de inquilinos", "plazas", pl === "piso_entero" ? 3 : 1, 'inputmode="numeric"')}</div>`}
       ${campo("Fianza (\u20AC) \u2014 vac\xEDo = una mensualidad", "fianza", "", 'inputmode="decimal"')}
@@ -1341,7 +1738,7 @@ async function vistaNueva() {
   pintar(`${cabVolver("Nuevo inquilino")}
     <div class="seccion">
       <div class="eti-campo">Piso</div>
-      <div class="pildoras" id="pisos">${pisos.map((p, i) => `<button type="button" data-id="${p.id}" class="${i === 0 ? "on" : ""}">${esc(p.nombre)}</button>`).join("")}</div>
+      <div class="pildoras" id="pisos">${pisos.map((p2, i) => `<button type="button" data-id="${p2.id}" class="${i === 0 ? "on" : ""}">${esc(p2.nombre)}</button>`).join("")}</div>
       <form id="f" class="seccion" style="padding:0">${formulario()}</form>
       <div id="resultado"></div>
     </div>
@@ -1360,7 +1757,7 @@ async function vistaNueva() {
     const b = e.target.closest("button[data-id]");
     if (!b) return;
     $$("#pisos button").forEach((x) => x.classList.toggle("on", x === b));
-    piso = pisos.find((p) => p.id === b.dataset.id);
+    piso = pisos.find((p2) => p2.id === b.dataset.id);
     $("[name=plantilla]", f).value = piso.plantilla || "habitacion";
     repintar();
   };
@@ -1390,11 +1787,13 @@ async function vistaNueva() {
       estado: "abierta",
       respuestas: 0,
       creada: serverTimestamp(),
-      creadaPor: usuario.email
+      creadaPor: usuario.email,
+      arrendadores: (ajustesNueva.propietarios || []).map((p2) => p2.nombre).filter(Boolean).join(" y ")
     };
     $("#crear").disabled = true;
     try {
-      await setDoc(doc(db, "invitaciones", token2), inv);
+      await setDoc(D("invitaciones", token2), inv);
+      await setDoc(doc(db, "enlaces", token2), { cuentaId: CID });
       location.hash = `#/inv/${token2}`;
     } catch (e) {
       aviso("No se pudo crear: " + e.message, true);
@@ -1433,26 +1832,26 @@ function cajaEnlace(inv, token2) {
       <button class="btn secundario" type="button" id="copiar" data-url="${esc(url)}">Copiar</button>
     </div>${demo}</div>`;
 }
-function resumenPersona(p) {
-  return `${esc(p.tratamiento)} ${esc(p.nombre)} \xB7 ${esc(p.tipoDoc)} ${esc(p.numDoc)}`;
+function resumenPersona(p2) {
+  return `${esc(p2.tratamiento)} ${esc(p2.nombre)} \xB7 ${esc(p2.tipoDoc)} ${esc(p2.numDoc)}`;
 }
 async function vistaInvitacion(id) {
-  const snap = await getDoc(doc(db, "invitaciones", id));
+  const snap = await getDoc(D("invitaciones", id));
   if (!snap.exists()) return pintar(`${cabVolver("Invitaci\xF3n no encontrada")}`, "inicio");
   const inv = snap.data();
   const [resps, contratos, ajustes] = await Promise.all([
     respuestasDe(id),
-    getDocs(query(collection(db, "contratos"), where("invitacionId", "==", id))).then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    getDocs(query(C("contratos"), where("invitacionId", "==", id))).then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() }))),
     leerAjustes()
   ]);
-  const condiciones = [
+  const condiciones2 = [
     PLANTILLAS[inv.plantilla] + (inv.habitacion ? ` \xB7 habitaci\xF3n ${inv.habitacion}` : ""),
     `Renta ${euros(inv.renta)}${inv.fianza ? ` \xB7 fianza ${euros(inv.fianza)}` : ""}`,
     inv.plantilla === "larga_duracion" ? `Desde el ${fechaLarga(inv.fechaInicio)} \xB7 agua ${inv.agua?.opcion === "cuota" ? euros(inv.agua.cuota) + "/mes" : "incluida"}` : `Del ${fechaLarga(inv.fechaInicio)} al ${fechaLarga(inv.fechaFin)} \xB7 luz: ${LUZ[inv.luz?.opcion]?.t || ""}${inv.luz?.cuota ? " " + euros(inv.luz.cuota) : ""}`
   ];
   pintar(`${cabVolver(inv.pisoNombre, "Invitaci\xF3n", "#/")}
     <div class="seccion">
-      <div class="tarjeta">${condiciones.map((c) => `<div class="meta" style="font-size:13px">${esc(c)}</div>`).join("")}</div>
+      <div class="tarjeta">${condiciones2.map((c) => `<div class="meta" style="font-size:13px">${esc(c)}</div>`).join("")}</div>
       ${inv.estado === "abierta" ? cajaEnlace(inv, id) : '<span class="chip gris" style="align-self:flex-start">Enlace cerrado</span>'}
       <div class="eti-campo">Inquilinos (${resps.length}${inv.plazas ? " de " + inv.plazas : ""})</div>
       ${resps.map((r, i) => `<div class="tarjeta">
@@ -1502,24 +1901,24 @@ async function vistaInvitacion(id) {
     };
     $("[data-cancelar]", f).onclick = () => contenedor.innerHTML = "";
     $("[data-guardar]", f).onclick = async () => {
-      const p = leerPersona(f, "p_");
-      let ok = validarPersona(f, "p_", p, { domicilio: true });
+      const p2 = leerPersona(f, "p_");
+      let ok = validarPersona(f, "p_", p2, { domicilio: true });
       const avales = $$("[data-aval]", f).map((_, j) => leerPersona(f, `a${j}_`)).filter((a) => a.nombre || a.numDoc);
       avales.forEach((a, j) => {
         ok = validarPersona(f, `a${j}_`, a) && ok;
       });
       if (!ok) return;
-      const datos = { ...p, avales: avales.map(({ domicilio, telefono, email, ...a }) => a) };
-      if (r.id) await updateDoc(doc(db, "invitaciones", id, "respuestas", r.id), datos);
+      const datos = { ...p2, avales: avales.map(({ domicilio, telefono, email, ...a }) => a) };
+      if (r.id) await updateDoc(D("invitaciones", id, "respuestas", r.id), datos);
       else {
-        await addDoc(collection(db, "invitaciones", id, "respuestas"), { ...datos, consentimiento: true, manual: true, enviada: serverTimestamp() });
+        await addDoc(C("invitaciones", id, "respuestas"), { ...datos, consentimiento: true, manual: true, enviada: serverTimestamp() });
       }
       aviso("Datos guardados");
       vistaInvitacion(id);
     };
     if ($("[data-quitar]", f)) $("[data-quitar]", f).onclick = async () => {
       if (!preguntar("\xBFQuitar a este inquilino de la invitaci\xF3n?")) return;
-      await deleteDoc(doc(db, "invitaciones", id, "respuestas", r.id));
+      await deleteDoc(D("invitaciones", id, "respuestas", r.id));
       vistaInvitacion(id);
     };
   };
@@ -1529,18 +1928,20 @@ async function vistaInvitacion(id) {
   });
   $("#manual").onclick = () => abrirEditor({ avales: [] }, $("#editor-nuevo"));
   $("#estado").onclick = async () => {
-    await updateDoc(doc(db, "invitaciones", id), { estado: inv.estado === "abierta" ? "cerrada" : "abierta" });
+    await updateDoc(D("invitaciones", id), { estado: inv.estado === "abierta" ? "cerrada" : "abierta" });
     vistaInvitacion(id);
   };
   $("#borrar").onclick = async () => {
     if (!preguntar("\xBFEliminar la invitaci\xF3n y los datos recibidos? Los contratos ya generados se mantienen.")) return;
-    for (const r of resps) await deleteDoc(doc(db, "invitaciones", id, "respuestas", r.id));
-    await deleteDoc(doc(db, "invitaciones", id));
+    for (const r of resps) await deleteDoc(D("invitaciones", id, "respuestas", r.id));
+    await deleteDoc(D("invitaciones", id));
+    await deleteDoc(doc(db, "enlaces", id)).catch(() => {
+    });
     location.hash = "#/";
   };
   if ($("#generar")) $("#generar").onclick = async () => {
     const boton = $("#generar");
-    if (!ajustes.iban || ajustes.propietarios.some((p) => !p.numDoc)) {
+    if (!ajustes.iban || ajustes.propietarios.some((p2) => !p2.numDoc)) {
       aviso("Completa primero vuestros DNIs e IBAN en Ajustes", true);
       return;
     }
@@ -1551,7 +1952,7 @@ async function vistaInvitacion(id) {
       const grupos = inv.plantilla === "habitacion" ? resps.map((r) => [r]) : [resps];
       const ids = [];
       for (const grupo of grupos) ids.push(await generarYGuardar(id, inv, grupo, ajustes, $("#fecha-firma").value));
-      await updateDoc(doc(db, "invitaciones", id), { estado: "cerrada" });
+      await updateDoc(D("invitaciones", id), { estado: "cerrada" });
       aviso(grupos.length > 1 ? `${grupos.length} contratos generados` : "Contrato generado: rev\xEDsalo y env\xEDalo a firmar");
       if (ids.length === 1) location.hash = `#/contrato/${ids[0]}`;
       else vistaInvitacion(id);
@@ -1566,7 +1967,8 @@ async function vistaInvitacion(id) {
 function datosContrato(inv, grupo, ajustes, fechaFirma, piso, conFotos) {
   return {
     plantilla: inv.plantilla,
-    ciudadFirma: inv.ciudad || ajustes.ciudadFirma || "C\xF3rdoba",
+    ciudadFirma: inv.ciudad || ajustes.ciudadFirma || "",
+    condiciones: ajustes.condiciones || {},
     fechaFirma,
     propietarios: ajustes.propietarios,
     domicilioPropietarios: ajustes.domicilio,
@@ -1623,7 +2025,7 @@ async function carpetaContratos(ajustes, a\u00F1o, pisoNombre) {
   return asegurarCarpeta([pisoNombre], contratos);
 }
 async function carpetasDestino(ajustes, inv, soloA\u00F1os = null) {
-  if (!ajustes.carpetaDriveId) return [];
+  if (!await raizDrive(ajustes)) return [];
   const ids = [];
   for (const a\u00F1o of soloA\u00F1os || a\u00F1osFiscales(inv)) ids.push({ a\u00F1o, id: await carpetaContratos(ajustes, a\u00F1o, inv.pisoNombre) });
   return ids;
@@ -1648,7 +2050,7 @@ async function hacerCopias(pendientes) {
       const r = await copiar(origen.id, carpetaId, nombre);
       nuevas.push({ a\u00F1o, carpetaId, id: r.id, link: r.webViewLink });
     }
-    await updateDoc(doc(db, "contratos", c.id), firmado ? { firmado: [...c.firmado, ...nuevas] } : { enDrive: [...c.enDrive, ...nuevas] });
+    await updateDoc(D("contratos", c.id), firmado ? { firmado: [...c.firmado, ...nuevas] } : { enDrive: [...c.enDrive, ...nuevas] });
   }
 }
 async function subirATodas(bytes, nombre, carpetas, mime) {
@@ -1660,7 +2062,7 @@ async function subirATodas(bytes, nombre, carpetas, mime) {
   return res;
 }
 async function generarYGuardar(invId, inv, grupo, ajustes, fechaFirma) {
-  const piso = inv.pisoId ? (await getDoc(doc(db, "pisos", inv.pisoId))).data() : null;
+  const piso = inv.pisoId ? (await getDoc(D("pisos", inv.pisoId))).data() : null;
   const fotos = await fotosDelPiso(piso);
   const datos = datosContrato(inv, grupo, ajustes, fechaFirma || hoyISO(), piso, !!fotos);
   const bytes = await construirPdf(generarContrato(datos), fotos);
@@ -1674,7 +2076,7 @@ async function generarYGuardar(invId, inv, grupo, ajustes, fechaFirma) {
     aviso("No se pudo subir a Drive; se descarga en el dispositivo", true);
   }
   if (!enDrive.length) bajar(bytes, nombreArchivo);
-  const nuevo = await addDoc(collection(db, "contratos"), {
+  const nuevo = await addDoc(C("contratos"), {
     invitacionId: invId,
     pisoId: inv.pisoId,
     pisoNombre: inv.pisoNombre,
@@ -1703,17 +2105,17 @@ async function vistaContratos() {
 var ROL_TEXTO = { arrendador: "Arrendador", arrendatario: "Arrendatario", fiador: "Fiador" };
 async function huellaDe(datos) {
   const texto = JSON.stringify(generarContrato({ ...datos, conFotos: !!datos.conFotos }));
-  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
-  return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const h2 = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
+  return [...new Uint8Array(h2)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function estadosDe(cid) {
-  const s = await getDocs(collection(db, "contratos", cid, "estados"));
+  const s = await getDocs(C("contratos", cid, "estados"));
   const m = {};
   s.docs.forEach((d) => m[d.id] = d.data());
   return m;
 }
 async function firmasDe(cid) {
-  const s = await getDocs(collection(db, "contratos", cid, "firmas"));
+  const s = await getDocs(C("contratos", cid, "firmas"));
   const m = {};
   s.docs.forEach((d) => m[d.id] = d.data());
   return m;
@@ -1768,12 +2170,12 @@ function crearPad(canvas) {
   });
   canvas.addEventListener("pointermove", (e) => {
     if (!pintando) return;
-    const p = punto(e);
+    const p2 = punto(e);
     ctx.beginPath();
     ctx.moveTo(ultimo.x, ultimo.y);
-    ctx.lineTo(p.x, p.y);
+    ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
-    ultimo = p;
+    ultimo = p2;
     trazos++;
   });
   const fin = () => {
@@ -1828,7 +2230,7 @@ function bloqueFirmantes(cid, c, firmas2, puedeFirmar, alFirmar, { soloEstos = n
         if (pad.vacio()) return aviso("Dibuja tu firma en el recuadro", true);
         e.target.disabled = true;
         try {
-          await setDoc(doc(db, "contratos", cid, "firmas", f.fid), {
+          await setDoc(D("contratos", cid, "firmas", f.fid), {
             nombre: f.nombre,
             numDoc: f.numDoc || "",
             rol: f.rol,
@@ -1838,7 +2240,7 @@ function bloqueFirmantes(cid, c, firmas2, puedeFirmar, alFirmar, { soloEstos = n
             firmadoEl: serverTimestamp(),
             dispositivo: navigator.userAgent.slice(0, 200)
           });
-          await setDoc(doc(db, "contratos", cid, "estados", f.fid), { nombre: f.nombre, rol: f.rol, firmadoEl: serverTimestamp() });
+          await setDoc(D("contratos", cid, "estados", f.fid), { nombre: f.nombre, rol: f.rol, firmadoEl: serverTimestamp() });
           aviso("Firma guardada");
           alFirmar();
         } catch (err) {
@@ -1854,7 +2256,7 @@ function bloqueFirmantes(cid, c, firmas2, puedeFirmar, alFirmar, { soloEstos = n
 async function archivarFirmado(cid, c) {
   const firmas2 = await firmasDe(cid);
   const ajustes = await leerAjustes();
-  const piso = c.pisoId ? (await getDoc(doc(db, "pisos", c.pisoId))).data() : null;
+  const piso = c.pisoId ? (await getDoc(D("pisos", c.pisoId))).data() : null;
   const fotos = c.datos.conFotos ? await fotosDelPiso(piso) : null;
   const registro = {
     huella: c.huella,
@@ -1885,22 +2287,22 @@ async function archivarFirmado(cid, c) {
     aviso("No se pudo subir a Drive; se descarga en el dispositivo", true);
   }
   if (!firmado.length) bajar(bytes, nombre);
-  await updateDoc(doc(db, "contratos", cid), { estado: "firmado", firmado, firmadoEl: serverTimestamp(), firmaElectronica: true });
+  await updateDoc(D("contratos", cid), { estado: "firmado", firmado, firmadoEl: serverTimestamp(), firmaElectronica: true });
 }
 async function enviarAFirmar(cid, c) {
   const firmantes = firmantesDe(c.datos);
   const huella = await huellaDe(c.datos);
-  await updateDoc(doc(db, "contratos", cid), {
+  await updateDoc(D("contratos", cid), {
     estado: "firmando",
     firmantes,
     firmantesIds: firmantes.map((f) => f.fid),
     huella,
     enviadoAFirmar: serverTimestamp()
   });
-  if (c.invitacionId) await updateDoc(doc(db, "invitaciones", c.invitacionId), { contratos: arrayUnion(cid) });
+  if (c.invitacionId) await updateDoc(D("invitaciones", c.invitacionId), { contratos: arrayUnion(cid) });
 }
 async function vistaContrato(id) {
-  const s = await getDoc(doc(db, "contratos", id));
+  const s = await getDoc(D("contratos", id));
   if (!s.exists()) return pintar(cabVolver("Contrato no encontrado", "", "#/contratos"), "contratos");
   const c = s.data();
   const firmas2 = c.estado === "generado" ? {} : await firmasDe(id);
@@ -1956,12 +2358,12 @@ async function vistaContrato(id) {
     await compartir("Firma de tu contrato", url);
   };
   if ($("#habilitar-copia")) $("#habilitar-copia").onclick = async () => {
-    await updateDoc(doc(db, "contratos", id), { copiaHabilitada: true, copiaHabilitadaEl: serverTimestamp() });
+    await updateDoc(D("contratos", id), { copiaHabilitada: true, copiaHabilitadaEl: serverTimestamp() });
     aviso("Copia habilitada: ya puede descargarla");
     vistaContrato(id);
   };
   if ($("#finalizar")) $("#finalizar").onclick = async () => {
-    await updateDoc(doc(db, "contratos", id), { finalizado: $("#fin-fecha").value });
+    await updateDoc(D("contratos", id), { finalizado: $("#fin-fecha").value });
     aviso("Contrato marcado como finalizado");
     vistaContrato(id);
   };
@@ -1983,7 +2385,7 @@ async function vistaContrato(id) {
     }
   };
   $("#descargar").onclick = async () => {
-    const piso = c.pisoId ? (await getDoc(doc(db, "pisos", c.pisoId))).data() : null;
+    const piso = c.pisoId ? (await getDoc(D("pisos", c.pisoId))).data() : null;
     const fotos = c.datos.conFotos ? await fotosDelPiso(piso).catch(() => null) : null;
     bajar(await construirPdf(generarContrato(c.datos), fotos, firmas2), c.nombreArchivo);
   };
@@ -1995,7 +2397,7 @@ async function vistaContrato(id) {
       const inv = { pisoNombre: c.pisoNombre, plantilla: c.plantilla, fechaInicio: c.datos.fechaInicio, fechaFin: c.datos.fechaFin };
       let carpetas = (c.enDrive || []).map((d) => ({ a\u00F1o: d.a\u00F1o, id: d.carpetaId }));
       if (!carpetas.length) carpetas = await carpetasDestino(ajustes, inv);
-      if (!carpetas.length) return aviso("Elige primero la carpeta \xABRentas\xBB en Ajustes", true);
+      if (!carpetas.length) return aviso("Configura Google Drive en Ajustes", true);
       const ext = archivo.type === "application/pdf" ? "pdf" : archivo.name.split(".").pop() || "jpg";
       const nombre = c.nombreArchivo.replace(/\.pdf$/i, "") + "_firmado." + ext;
       const bytes = await archivo.arrayBuffer();
@@ -2007,7 +2409,7 @@ async function vistaContrato(id) {
         if (err.status !== 404 && err.status !== 403) throw err;
         firmado = await subirATodas(bytes, nombre, await carpetasDestino(ajustes, inv), archivo.type || "application/pdf");
       }
-      await updateDoc(doc(db, "contratos", id), { estado: "firmado", firmado, firmadoEl: serverTimestamp() });
+      await updateDoc(D("contratos", id), { estado: "firmado", firmado, firmadoEl: serverTimestamp() });
       aviso("Contrato firmado guardado");
       vistaContrato(id);
     } catch (err) {
@@ -2038,7 +2440,7 @@ async function vistaFirmaInquilino(token2, inv, contratos) {
   const estadoTexto = (b) => {
     if (b.copia) return "";
     if (b.pendientes > 0) return "";
-    if (b.c.estado === "firmado") return '<p class="ayuda">El contrato est\xE1 firmado por todas las partes. Tus caseros te avisar\xE1n cuando puedas descargar tu copia.</p>';
+    if (b.c.estado === "firmado") return '<p class="ayuda">El contrato est\xE1 firmado por todas las partes. Tu arrendador te avisar\xE1 cuando puedas descargar tu copia.</p>';
     return '<p class="ayuda">\xA1Gracias! Ya hab\xE9is firmado todos. Ahora firmar\xE1n los arrendadores y te avisar\xE1n cuando tengas tu copia.</p>';
   };
   pintar(`<div class="hero"><div class="eti">${esc(sub)}</div>
@@ -2046,7 +2448,7 @@ async function vistaFirmaInquilino(token2, inv, contratos) {
       <p>${todasCopias ? "Ya est\xE1 firmado por todas las partes. Aqu\xED tienes tu copia." : "L\xE9elo o desc\xE1rgalo con calma. Despu\xE9s, cada persona firma su parte: t\xFA como arrendatario y cada avalista como fiador."}</p></div>
     ${bloques.map((b) => `<div class="seccion">
       ${bloques.length > 1 ? `<div class="eti-campo">Contrato de ${esc(b.c.inquilinos.join(", "))}</div>` : ""}
-      ${!b.intacto ? '<div class="tarjeta" style="color:#A2321F">Este contrato se ha modificado despu\xE9s de enviarse. Pide a tus caseros que lo env\xEDen de nuevo.</div>' : ""}
+      ${!b.intacto ? '<div class="tarjeta" style="color:#A2321F">Este contrato se ha modificado despu\xE9s de enviarse. Pide a tu arrendador que lo env\xEDe de nuevo.</div>' : ""}
       ${b.copia ? `<button class="btn primario" data-copia="${b.id}">Descargar mi copia firmada</button>` : `<details class="tarjeta"><summary style="font-weight:600;cursor:pointer;min-height:28px">Leer el contrato completo</summary>
              <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;font-size:14px">${contratoHtml(b.c.datos)}</div></details>
            <button class="btn secundario" data-borrador="${b.id}">Descargar el contrato en PDF (sin firmas)</button>`}
@@ -2065,76 +2467,23 @@ async function vistaFirmaInquilino(token2, inv, contratos) {
     bajar(await construirPdf(generarContrato({ ...b.c.datos, conFotos: false }), null, firmas2), b.c.nombreArchivo.replace(/\.pdf$/i, "") + "_firmado.pdf");
   });
 }
-async function vistaAjustes() {
-  const a = await leerAjustes();
-  const props = a.propietarios || [];
-  pintar(`${cabVolver("Ajustes")}
-    <form class="seccion" id="f">
-      ${props.map((p, i) => `<div class="tarjeta"><div class="eti-campo">Propietario ${i + 1}</div>${camposPersona(`o${i}_`, p)}</div>`).join("")}
-      ${campo("Domicilio para notificaciones", "domicilio", a.domicilio)}
-      ${campo("IBAN para el pago de la renta", "iban", a.iban, 'autocapitalize="characters" placeholder="ES00 0000 0000 0000 0000 0000"')}
-      ${campo("Ciudad de firma por defecto", "ciudadFirma", a.ciudadFirma)}
-      <div class="eti-campo">Carpeta \xABRentas\xBB de Google Drive</div>
-      <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin elegir")}</div>
-        <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
-        <button type="button" class="btn secundario" id="elegir">Elegir</button></div></div>
-      <input type="hidden" name="carpetaDriveId" value="${esc(a.carpetaDriveId || "")}">
-      <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}">
-    </form>
-    <div class="acciones">
-      <button class="btn primario ancho" id="guardar">Guardar</button>
-      <p class="ayuda" style="text-align:center">Sesi\xF3n: ${esc(usuario.email)}</p>
-      <button class="btn peligro" id="salir">Cerrar sesi\xF3n</button>
-    </div>`, "ajustes");
-  const f = $("#f");
-  activarSegmentos(f);
-  $("#elegir").onclick = async () => {
-    try {
-      const r = await elegir("carpeta");
-      if (!r) return;
-      f.carpetaDriveId.value = r.id;
-      f.carpetaDriveNombre.value = r.name;
-      $("#carpeta-nombre").textContent = r.name;
-      await setDoc(doc(db, "ajustes", "general"), { carpetaDriveId: r.id, carpetaDriveNombre: r.name }, { merge: true });
-      aviso(`Carpeta \xAB${r.name}\xBB guardada`);
-    } catch (e) {
-      aviso("Drive: " + e.message, true);
-    }
-  };
-  $("#guardar").onclick = async () => {
-    const propietarios = props.map((_, i) => leerPersona(f, `o${i}_`));
-    let ok = true;
-    propietarios.forEach((p, i) => {
-      ok = validarPersona(f, `o${i}_`, p) && ok;
-    });
-    if (!ok) return;
-    const iban = f.iban.value.toUpperCase().replace(/\s+/g, "").replace(/(.{4})/g, "$1 ").trim();
-    if (!/^ES\d{2}( \d{4}){5}$/.test(iban)) return aviso("El IBAN debe ser espa\xF1ol: ES + 22 n\xFAmeros", true);
-    await setDoc(doc(db, "ajustes", "general"), {
-      propietarios: propietarios.map(({ tratamiento, nombre, tipoDoc, numDoc }) => ({ tratamiento, nombre, tipoDoc, numDoc })),
-      domicilio: f.domicilio.value.trim(),
-      iban,
-      ciudadFirma: f.ciudadFirma.value.trim(),
-      carpetaDriveId: f.carpetaDriveId.value,
-      carpetaDriveNombre: f.carpetaDriveNombre.value
-    });
-    aviso("Ajustes guardados");
-  };
-  $("#salir").onclick = () => signOut(auth);
-}
 async function vistaInquilino(token2) {
-  const s = await getDoc(doc(db, "invitaciones", token2)).catch(() => null);
-  if (!s || !s.exists()) return pintar(`<div class="gracias"><h1>Enlace no v\xE1lido</h1><p class="ayuda">Pide a tu casera un enlace nuevo.</p></div>`);
+  const noValido = () => pintar(`<div class="gracias"><h1>Enlace no v\xE1lido</h1><p class="ayuda">Pide a tu arrendador un enlace nuevo.</p></div>`);
+  const cid = await cuentaDeEnlace(token2);
+  if (!cid) return noValido();
+  fijarCuenta(cid);
+  const s = await getDoc(D("invitaciones", token2)).catch(() => null);
+  if (!s || !s.exists()) return noValido();
   const inv = s.data();
   if (inv.contratos?.length) {
     const cs = [];
-    for (const cid of inv.contratos) {
-      const cs1 = await getDoc(doc(db, "contratos", cid)).catch(() => null);
-      if (cs1?.exists() && ["firmando", "firmado"].includes(cs1.data().estado)) cs.push({ id: cid, c: cs1.data() });
+    for (const cid2 of inv.contratos) {
+      const cs1 = await getDoc(D("contratos", cid2)).catch(() => null);
+      if (cs1?.exists() && ["firmando", "firmado"].includes(cs1.data().estado)) cs.push({ id: cid2, c: cs1.data() });
     }
     if (cs.length) return vistaFirmaInquilino(token2, inv, cs);
   }
-  if (inv.estado !== "abierta") return pintar(`<div class="gracias"><h1>Este enlace ya est\xE1 cerrado</h1><p class="ayuda">Si necesitas cambiar alg\xFAn dato, escribe directamente a tus caseros.</p></div>`);
+  if (inv.estado !== "abierta") return pintar(`<div class="gracias"><h1>Este enlace ya est\xE1 cerrado</h1><p class="ayuda">Si necesitas cambiar alg\xFAn dato, escribe directamente a tu arrendador.</p></div>`);
   const clave = "borrador-" + token2;
   let borrador = {};
   try {
@@ -2170,10 +2519,10 @@ async function vistaInquilino(token2) {
         guardarBorrador();
       });
       $("#sig").onclick = () => {
-        const p = leerPersona(f, "p_");
-        if (!validarPersona(f, "p_", p, { domicilio: true })) return;
-        if (!p.telefono && !p.email) return aviso("Deja al menos un tel\xE9fono o un email", true);
-        Object.assign(borrador, p);
+        const p2 = leerPersona(f, "p_");
+        if (!validarPersona(f, "p_", p2, { domicilio: true })) return;
+        if (!p2.telefono && !p2.email) return aviso("Deja al menos un tel\xE9fono o un email", true);
+        Object.assign(borrador, p2);
         guardarBorrador();
         paso = 2;
         mostrar();
@@ -2227,7 +2576,7 @@ async function vistaInquilino(token2) {
           <div class="tarjeta"><dl>${fila("Nombre", `${borrador.tratamiento} ${borrador.nombre}`)}${fila(borrador.tipoDoc, borrador.numDoc)}${fila("Domicilio", borrador.domicilio)}${fila("Tel\xE9fono", borrador.telefono)}${fila("Email", borrador.email)}</dl></div>
           ${borrador.avales.map((a) => `<div class="tarjeta"><div class="eti-campo">Avalista${a.parentesco ? " \xB7 " + esc(a.parentesco) : ""}</div><dl>${fila("Nombre", `${a.tratamiento} ${a.nombre}`)}${fila(a.tipoDoc, a.numDoc)}</dl></div>`).join("")}
           <label class="check"><input type="checkbox" id="acepto">
-            <span>Acepto que mis datos y los de mis avalistas se usen \xFAnicamente para redactar y gestionar el contrato de alquiler. Puedo pedir su rectificaci\xF3n o supresi\xF3n escribiendo a los arrendadores.</span></label>
+            <span>${TEXTO_CONSENTIMIENTO(inv.arrendadores)}</span></label>
         </div>
         <div class="acciones"><button class="btn primario ancho" id="enviar">Enviar datos</button><button class="btn secundario" id="atras">Atr\xE1s</button></div>`);
       $("#atras").onclick = () => {
@@ -2237,9 +2586,9 @@ async function vistaInquilino(token2) {
       $("#enviar").onclick = async () => {
         if (!$("#acepto").checked) return aviso("Marca la casilla de consentimiento", true);
         $("#enviar").disabled = true;
-        const limpio = (p) => ({ tratamiento: p.tratamiento, nombre: p.nombre, tipoDoc: p.tipoDoc, numDoc: p.numDoc, parentesco: p.parentesco || "" });
+        const limpio = (p2) => ({ tratamiento: p2.tratamiento, nombre: p2.nombre, tipoDoc: p2.tipoDoc, numDoc: p2.numDoc, parentesco: p2.parentesco || "" });
         try {
-          await addDoc(collection(db, "invitaciones", token2, "respuestas"), {
+          await addDoc(C("invitaciones", token2, "respuestas"), {
             tratamiento: borrador.tratamiento,
             nombre: borrador.nombre,
             tipoDoc: borrador.tipoDoc,
@@ -2287,7 +2636,7 @@ async function vistaFacturas() {
   pintar(`${cabVolver("Facturas", "Gastos de los pisos para la renta")}
     <div class="seccion">
       <div class="eti-campo">Piso</div>
-      <div class="pildoras" id="pisos">${pisos.map((p, i) => `<button type="button" data-id="${p.id}" class="${i === 0 ? "on" : ""}">${esc(p.nombre)}</button>`).join("")}</div>
+      <div class="pildoras" id="pisos">${pisos.map((p2, i) => `<button type="button" data-id="${p2.id}" class="${i === 0 ? "on" : ""}">${esc(p2.nombre)}</button>`).join("")}</div>
       <div class="dos">
         <label class="btn primario">${ICO.camara} Hacer foto<input type="file" accept="image/*" capture="environment" id="foto" hidden></label>
         <label class="btn secundario" style="min-height:52px">Subir archivo<input type="file" accept="image/*,application/pdf" id="archivo" hidden></label>
@@ -2318,7 +2667,7 @@ async function vistaFacturas() {
     const b = e.target.closest("button[data-id]");
     if (!b) return;
     $$("#pisos button").forEach((x) => x.classList.toggle("on", x === b));
-    piso = pisos.find((p) => p.id === b.dataset.id);
+    piso = pisos.find((p2) => p2.id === b.dataset.id);
     destino();
   };
   const elegir2 = (e) => {
@@ -2337,7 +2686,7 @@ async function vistaFacturas() {
   $("#guardar").onclick = async (e) => {
     if (!archivo) return aviso("Haz una foto o elige el archivo de la factura", true);
     const ajustes = await leerAjustes();
-    if (!ajustes.carpetaDriveId) return aviso("Elige primero la carpeta \xABRentas\xBB en Ajustes", true);
+    if (!await raizDrive(ajustes)) return aviso("Configura Google Drive en Ajustes", true);
     const fecha = f.fecha.value || hoyISO();
     const ext = archivo.type === "application/pdf" ? "pdf" : (archivo.name.split(".").pop() || "jpg").toLowerCase();
     const nombre = nombreFactura(f.proveedor.value, f.concepto.value, fecha, ext);
@@ -2346,7 +2695,7 @@ async function vistaFacturas() {
     try {
       const carpeta = await carpetaFacturas(ajustes, fecha.slice(0, 4), piso);
       const r = await subirPdf(await archivo.arrayBuffer(), nombre, carpeta, archivo.type || "image/jpeg");
-      await addDoc(collection(db, "facturas"), {
+      await addDoc(C("facturas"), {
         pisoId: piso.id,
         pisoNombre: piso.nombre,
         proveedor: f.proveedor.value.trim(),
@@ -2368,14 +2717,460 @@ async function vistaFacturas() {
     }
   };
 }
+var CCAA = [
+  "Andaluc\xEDa",
+  "Arag\xF3n",
+  "Principado de Asturias",
+  "Illes Balears",
+  "Canarias",
+  "Cantabria",
+  "Castilla-La Mancha",
+  "Castilla y Le\xF3n",
+  "Catalu\xF1a",
+  "Comunitat Valenciana",
+  "Extremadura",
+  "Galicia",
+  "Comunidad de Madrid",
+  "Regi\xF3n de Murcia",
+  "Comunidad Foral de Navarra",
+  "Pa\xEDs Vasco",
+  "La Rioja",
+  "Ceuta",
+  "Melilla"
+];
+function enlacesLegales() {
+  return `<p class="ayuda" style="text-align:center;font-size:12px">
+    <a href="#/legal/privacidad">Privacidad</a> \xB7 <a href="#/legal/terminos">Condiciones</a> \xB7 <a href="#/legal/aviso">Aviso legal</a></p>`;
+}
+async function vistaLogin() {
+  pintar(`<div class="login" style="padding-top:56px">
+    <h1>${esc(CONFIG.nombreApp || "Contratos de alquiler")}</h1>
+    <p class="ayuda" style="font-size:15px;max-width:34ch">Tus inquilinos rellenan sus datos desde el m\xF3vil, el contrato se genera solo y lo firma cada parte desde su tel\xE9fono.</p>
+    <div class="seccion" style="padding:0;text-align:left;width:100%;max-width:420px">
+      <div class="tarjeta"><div class="nombre">Sin papeleo</div><div class="meta">Un enlace por inquilino: datos, avalistas y DNI validados.</div></div>
+      <div class="tarjeta"><div class="nombre">Firma en el m\xF3vil</div><div class="meta">Inquilino, avalistas y propietarios firman con el dedo. Queda registro de cada firma.</div></div>
+      <div class="tarjeta"><div class="nombre">Todo en tu Google Drive</div><div class="meta">Contratos y facturas ordenados por a\xF1o de la renta y por piso.</div></div>
+    </div>
+    <button class="btn primario" id="entrar" style="min-width:260px">Entrar con Google</button>
+    <p class="ayuda" style="font-size:12px;max-width:36ch">Al entrar aceptas las <a href="#/legal/terminos">condiciones de uso</a> y la <a href="#/legal/privacidad">pol\xEDtica de privacidad</a>.</p>
+    ${usuario ? '<button class="btn peligro" id="salir">Usar otra cuenta</button>' : ""}
+    ${enlacesLegales()}
+  </div>`);
+  $("#entrar").onclick = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (e) {
+      aviso("No se pudo iniciar sesi\xF3n: " + e.message, true);
+    }
+  };
+  if ($("#salir")) $("#salir").onclick = () => signOut(auth);
+}
+function vistaLegal(slug2) {
+  const titulo = LEGALES[slug2] || "Informaci\xF3n legal";
+  pintar(`${cabVolver(titulo, CONFIG.nombreApp || "", usuario ? "#/ajustes" : "#/")}
+    <div class="seccion" style="gap:12px;font-size:14px">${paginaLegal(slug2)}</div>
+    <div class="acciones">${enlacesLegales()}</div>`);
+}
+function editorPropietarios(cont, lista) {
+  const pintarLista = () => {
+    cont.innerHTML = lista.map((p2, i) => `<div class="tarjeta" data-prop="${i}">
+        <div class="fila"><div class="eti-campo">Propietario ${i + 1}</div>
+        ${lista.length > 1 ? `<button type="button" class="btn peligro" data-quitar-prop="${i}" style="min-height:36px">Quitar</button>` : ""}</div>
+        ${camposPersona(`o${i}_`, p2)}</div>`).join("") + (lista.length < 4 ? `<button type="button" class="btn fantasma" data-mas-prop>+ A\xF1adir copropietario</button>` : "");
+    activarSegmentos(cont);
+    const mas = cont.querySelector("[data-mas-prop]");
+    if (mas) mas.onclick = () => {
+      leer();
+      lista.push({ tipoDoc: "DNI" });
+      pintarLista();
+    };
+    cont.querySelectorAll("[data-quitar-prop]").forEach((b) => b.onclick = () => {
+      leer();
+      lista.splice(+b.dataset.quitarProp, 1);
+      pintarLista();
+    });
+  };
+  const leer = () => lista.forEach((_, i) => lista[i] = leerPersona(cont, `o${i}_`));
+  pintarLista();
+  return {
+    leer: () => {
+      leer();
+      return lista.map(({ tratamiento, nombre, tipoDoc, numDoc }) => ({ tratamiento, nombre, tipoDoc, numDoc }));
+    },
+    validar: () => {
+      leer();
+      let ok = true;
+      lista.forEach((p2, i) => {
+        ok = validarPersona(cont, `o${i}_`, p2) && ok;
+      });
+      return ok;
+    }
+  };
+}
+function normalizarIban(v) {
+  return String(v || "").toUpperCase().replace(/\s+/g, "").replace(/(.{4})/g, "$1 ").trim();
+}
+var ibanValido = (iban) => /^ES\d{2}( \d{4}){5}$/.test(iban);
+function selectCcaa(valor) {
+  return `<label class="campo">Comunidad aut\xF3noma de tus pisos<select name="ccaa"><option value="">Sin indicar</option>
+    ${CCAA.map((c) => `<option ${c === valor ? "selected" : ""}>${c}</option>`).join("")}</select></label>`;
+}
+async function vistaBienvenida() {
+  const a = await leerAjustes();
+  let paso = 1;
+  const props = JSON.parse(JSON.stringify(a.propietarios?.length ? a.propietarios : [{ nombre: usuario.displayName || "", tipoDoc: "DNI" }]));
+  const datos = { domicilio: a.domicilio || "", iban: a.iban || "", ciudadFirma: a.ciudadFirma || "", ccaa: a.condiciones?.ccaa || "", modoDrive: a.modoDrive || "propia" };
+  let editor;
+  const cab = (t, sub) => `<div class="hero"><div class="eti">Bienvenida \xB7 ${paso} de 4</div><h1>${t}</h1><p>${sub}</p>
+    <div class="progreso" style="grid-template-columns:repeat(4,1fr)">${[1, 2, 3, 4].map((n) => `<span class="${n <= paso ? "on" : ""}"></span>`).join("")}</div></div>`;
+  const guardar = async (extra = {}) => setDoc(D("ajustes", "general"), {
+    propietarios: props,
+    domicilio: datos.domicilio,
+    iban: datos.iban,
+    ciudadFirma: datos.ciudadFirma,
+    modoDrive: datos.modoDrive,
+    condiciones: { ...a.condiciones || {}, ccaa: datos.ccaa },
+    ...extra
+  }, { merge: true });
+  const mostrar = () => {
+    if (paso === 1) {
+      pintar(`${cab("\xBFQui\xE9n alquila?", "Tus datos tal y como aparecer\xE1n en los contratos. Si el piso es de varias personas, a\xF1\xE1delas.")}
+        <div class="seccion" id="props"></div>
+        <div class="acciones"><button class="btn primario ancho" id="sig">Siguiente</button></div>`);
+      editor = editorPropietarios($("#props"), props);
+      $("#sig").onclick = () => {
+        if (!editor.validar()) return;
+        props.splice(0, props.length, ...editor.leer());
+        paso = 2;
+        mostrar();
+      };
+    } else if (paso === 2) {
+      pintar(`${cab("Cobro y notificaciones", "D\xF3nde te llegan las notificaciones y d\xF3nde te pagan la renta.")}
+        <form class="seccion" id="f">
+          ${campo("Domicilio para notificaciones", "domicilio", datos.domicilio, 'placeholder="Calle, n\xFAmero, piso, CP y ciudad"')}
+          ${campo("IBAN para el pago de la renta", "iban", datos.iban, 'autocapitalize="characters" placeholder="ES00 0000 0000 0000 0000 0000"')}
+          ${campo("Ciudad donde sueles firmar", "ciudadFirma", datos.ciudadFirma)}
+          ${selectCcaa(datos.ccaa)}
+          <p class="ayuda">La comunidad aut\xF3noma se usa para la cl\xE1usula del dep\xF3sito de la fianza, que es obligatorio y cambia seg\xFAn la regi\xF3n.</p>
+        </form>
+        <div class="acciones"><div class="dos"><button class="btn secundario" id="atras">Atr\xE1s</button><button class="btn primario" id="sig">Siguiente</button></div></div>`);
+      const f = $("#f");
+      $("#atras").onclick = () => {
+        paso = 1;
+        mostrar();
+      };
+      $("#sig").onclick = () => {
+        datos.domicilio = f.domicilio.value.trim();
+        datos.iban = normalizarIban(f.iban.value);
+        datos.ciudadFirma = f.ciudadFirma.value.trim();
+        datos.ccaa = f.ccaa.value;
+        if (datos.domicilio.length < 8) return aviso("Escribe el domicilio completo", true);
+        if (!ibanValido(datos.iban)) return aviso("El IBAN debe ser espa\xF1ol: ES + 22 n\xFAmeros", true);
+        paso = 3;
+        mostrar();
+      };
+    } else if (paso === 3) {
+      pintar(`${cab("Tu Google Drive", "Aqu\xED se guardar\xE1n los contratos firmados y las facturas, ordenados por a\xF1o de la renta y por piso.")}
+        <div class="seccion">
+          <button type="button" class="opcion-luz ${datos.modoDrive === "propia" ? "on" : ""}" data-modo="propia"><b>Crear una carpeta \xAB${esc(CONFIG.carpetaRaiz || "Alquileres")}\xBB (recomendado)</b>
+            <span>La app solo accede a esa carpeta. Dentro crea Renta AAAA / Contratos / Piso y Renta AAAA / Pisos facturas / Piso.</span></button>
+          <button type="button" class="opcion-luz ${datos.modoDrive === "completo" ? "on" : ""}" data-modo="completo"><b>Usar carpetas que ya tengo</b>
+            <span>Por ejemplo, una carpeta \xABRentas\xBB con tus Renta 2025, Renta 2026\u2026 Requiere permiso para ver tu Drive.</span></button>
+          <button class="btn salvia" id="conectar">Conectar Google Drive</button>
+          <p class="ayuda" id="estado-drive">${a.carpetaDriveNombre ? "Conectado: " + esc(a.carpetaDriveNombre) : "Puedes hacerlo ahora o m\xE1s tarde desde Ajustes."}</p>
+        </div>
+        <div class="acciones"><div class="dos"><button class="btn secundario" id="atras">Atr\xE1s</button><button class="btn primario" id="sig">Siguiente</button></div></div>`);
+      $$("[data-modo]").forEach((b) => b.onclick = () => {
+        datos.modoDrive = b.dataset.modo;
+        $$("[data-modo]").forEach((x) => x.classList.toggle("on", x === b));
+      });
+      $("#conectar").onclick = async () => {
+        try {
+          await guardar();
+          const aj = await leerAjustes();
+          if (datos.modoDrive === "completo") {
+            const r = await elegir("carpeta");
+            if (!r) return;
+            await setDoc(D("ajustes", "general"), { carpetaDriveId: r.id, carpetaDriveNombre: r.name }, { merge: true });
+            a.carpetaDriveNombre = r.name;
+          } else {
+            if (aj.modoDrive !== "propia" || !aj.carpetaDriveId) {
+              aj.carpetaDriveId = "";
+              await raizDrive(aj);
+            }
+            a.carpetaDriveNombre = aj.carpetaDriveNombre;
+          }
+          $("#estado-drive").textContent = "Conectado: " + a.carpetaDriveNombre;
+          aviso("Google Drive conectado");
+        } catch (e) {
+          aviso("Drive: " + e.message, true);
+        }
+      };
+      $("#atras").onclick = () => {
+        paso = 2;
+        mostrar();
+      };
+      $("#sig").onclick = () => {
+        paso = 4;
+        mostrar();
+      };
+    } else {
+      pintar(`${cab("\xDAltimo paso", "Lee y acepta las condiciones para empezar.")}
+        <div class="seccion">
+          <label class="check"><input type="checkbox" id="acepto">
+            <span>Acepto las <a href="#/legal/terminos" target="_blank" rel="noopener">condiciones de uso</a>, el <a href="#/legal/encargo" target="_blank" rel="noopener">contrato de encargo del tratamiento</a> de los datos de mis inquilinos y he le\xEDdo la <a href="#/legal/privacidad" target="_blank" rel="noopener">pol\xEDtica de privacidad</a>.</span></label>
+          <p class="ayuda">Los modelos de contrato son orientativos: rev\xEDsalos antes de enviarlos a firmar y ad\xE1ptalos en Ajustes \u2192 Contratos.</p>
+        </div>
+        <div class="acciones"><div class="dos"><button class="btn secundario" id="atras">Atr\xE1s</button><button class="btn primario" id="fin">Empezar</button></div></div>`);
+      $("#atras").onclick = () => {
+        paso = 3;
+        mostrar();
+      };
+      $("#fin").onclick = async () => {
+        if (!$("#acepto").checked) return aviso("Marca la casilla para continuar", true);
+        await guardar({ terminosAceptados: serverTimestamp(), versionTerminos: CONFIG.versionTextos || "1" });
+        aviso("\xA1Listo! Ahora a\xF1ade tu primer piso");
+        location.hash = "#/piso/nuevo";
+      };
+    }
+  };
+  mostrar();
+}
+async function vistaAjustes() {
+  const [a, cuenta] = await Promise.all([leerAjustes(), leerCuenta()]);
+  const props = JSON.parse(JSON.stringify(a.propietarios || []));
+  const k = a.condiciones || {};
+  const esTitular = cuenta?.propietario === usuario.uid;
+  const yo = String(usuario.email || "").toLowerCase();
+  pintar(`${cabVolver("Ajustes")}
+    <form class="seccion" id="f">
+      <div class="eti-campo">Propietarios</div>
+      <div class="seccion" style="padding:0" id="props"></div>
+
+      <div class="eti-campo">Cobro y notificaciones</div>
+      ${campo("Domicilio para notificaciones", "domicilio", a.domicilio)}
+      ${campo("IBAN para el pago de la renta", "iban", a.iban, 'autocapitalize="characters" placeholder="ES00 0000 0000 0000 0000 0000"')}
+      ${campo("Ciudad de firma por defecto", "ciudadFirma", a.ciudadFirma)}
+      ${selectCcaa(k.ccaa || "")}
+
+      <div class="eti-campo">Contratos</div>
+      <div class="rejilla">
+        ${campo("D\xEDa l\xEDmite de pago (1-28)", "diaPago", k.diaPago || 7, 'type="number" min="1" max="28" inputmode="numeric"')}
+        <label class="campo">Garant\xEDa adicional<select name="garantiaMeses">
+          ${[0, 1, 2].map((n) => `<option value="${n}" ${String(k.garantiaMeses || 0) === String(n) ? "selected" : ""}>${n === 0 ? "Ninguna" : n === 1 ? "1 mensualidad" : "2 mensualidades"}</option>`).join("")}</select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="clausulaLimpieza" ${k.clausulaLimpieza === false ? "" : "checked"}>
+        <span>Incluir la cl\xE1usula de limpieza al devolver el piso (contratos de estudiantes)</span></label>
+      <label class="campo">Cl\xE1usulas adicionales (se a\xF1aden a todos tus contratos; separa cada una con una l\xEDnea en blanco)
+        <textarea name="clausulasExtra" rows="5" placeholder="Por ejemplo: No se permiten mascotas sin autorizaci\xF3n escrita del arrendador.">${esc(k.clausulasExtra || "")}</textarea></label>
+
+      <div class="eti-campo">Google Drive</div>
+      ${segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
+      <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin conectar")}</div>
+        <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
+        <button type="button" class="btn secundario" id="elegir">${(a.modoDrive || "propia") === "completo" ? "Elegir" : "Conectar"}</button></div></div>
+      <input type="hidden" name="carpetaDriveId" value="${esc(a.carpetaDriveId || "")}">
+      <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}">
+    </form>
+    <div class="acciones"><button class="btn primario ancho" id="guardar">Guardar</button></div>
+
+    <div class="titulo-seccion"><h2>Equipo</h2></div>
+    <div class="seccion">
+      <p class="ayuda">Las personas de tu equipo ven y gestionan todos los pisos, inquilinos y contratos de esta cuenta. Entran con su cuenta de Google.</p>
+      ${(cuenta?.emailsMiembros || []).map((e) => {
+    const activo = Object.values(cuenta.correos || {}).includes(e);
+    return `<div class="tarjeta"><div class="fila"><div><div class="nombre" style="font-size:14px">${esc(e)}</div>
+          <div class="meta">${e === yo ? "T\xFA" : activo ? "Miembro" : "Invitaci\xF3n pendiente: que entre con este email"}</div></div>
+          ${e !== yo && esTitular ? `<button class="btn peligro" data-quitar-miembro="${esc(e)}" style="min-height:36px">Quitar</button>` : ""}</div></div>`;
+  }).join("")}
+      <div class="rejilla" style="grid-template-columns:1fr auto">
+        ${campo("Email de Google de la otra persona", "nuevoMiembro", "", 'type="email" id="nuevo-miembro" placeholder="nombre@gmail.com"')}
+        <button class="btn secundario" id="invitar" style="align-self:end">A\xF1adir</button>
+      </div>
+    </div>
+
+    <div class="titulo-seccion"><h2>Privacidad y datos</h2></div>
+    <div class="seccion">
+      <div class="tarjeta" style="gap:6px">
+        ${Object.entries(LEGALES).map(([k2, t]) => `<a href="#/legal/${k2}" style="font-size:14px">${t}</a>`).join("")}
+      </div>
+      ${DEMO ? "" : '<button class="btn secundario" id="exportar">Descargar una copia de mis datos</button>'}
+      ${esTitular ? `<button class="btn peligro" id="borrar-cuenta">Borrar mi cuenta y todos sus datos</button><div id="confirmar-borrado"></div>` : `<button class="btn peligro" id="salir-equipo">Salir de este equipo</button>`}
+    </div>
+
+    <div class="acciones">
+      <p class="ayuda" style="text-align:center">Sesi\xF3n: ${esc(usuario.email)}</p>
+      <button class="btn secundario" id="salir">Cerrar sesi\xF3n</button>
+      ${enlacesLegales()}
+    </div>`, "ajustes");
+  const f = $("#f");
+  activarSegmentos(f);
+  const editor = editorPropietarios($("#props"), props);
+  f.addEventListener("change", (e) => {
+    if (e.target.name === "modoDrive") {
+      $("#elegir").textContent = e.target.value === "completo" ? "Elegir" : "Conectar";
+      aviso("Pulsa Guardar y despu\xE9s " + (e.target.value === "completo" ? "Elegir" : "Conectar"));
+    }
+  });
+  $("#elegir").onclick = async () => {
+    try {
+      const modo2 = f.modoDrive.value;
+      if (modo2 !== (a.modoDrive || "propia")) return aviso("Guarda primero el cambio de modo", true);
+      if (modo2 === "completo") {
+        const r = await elegir("carpeta");
+        if (!r) return;
+        f.carpetaDriveId.value = r.id;
+        f.carpetaDriveNombre.value = r.name;
+        $("#carpeta-nombre").textContent = r.name;
+        await setDoc(D("ajustes", "general"), { carpetaDriveId: r.id, carpetaDriveNombre: r.name }, { merge: true });
+        aviso(`Carpeta \xAB${r.name}\xBB guardada`);
+      } else {
+        const aj = await leerAjustes();
+        await raizDrive(aj);
+        $("#carpeta-nombre").textContent = aj.carpetaDriveNombre;
+        aviso("Google Drive conectado");
+      }
+    } catch (e) {
+      aviso("Drive: " + e.message, true);
+    }
+  };
+  $("#guardar").onclick = async () => {
+    if (!editor.validar()) return;
+    const iban = normalizarIban(f.iban.value);
+    if (!ibanValido(iban)) return aviso("El IBAN debe ser espa\xF1ol: ES + 22 n\xFAmeros", true);
+    const modo2 = f.modoDrive.value;
+    const cambiaModo = modo2 !== (a.modoDrive || "propia");
+    await setDoc(D("ajustes", "general"), {
+      propietarios: editor.leer(),
+      domicilio: f.domicilio.value.trim(),
+      iban,
+      ciudadFirma: f.ciudadFirma.value.trim(),
+      modoDrive: modo2,
+      carpetaDriveId: cambiaModo ? "" : f.carpetaDriveId.value,
+      carpetaDriveNombre: cambiaModo ? "" : f.carpetaDriveNombre.value,
+      condiciones: {
+        ccaa: f.ccaa.value,
+        diaPago: Math.min(28, Math.max(1, parseInt(f.diaPago.value, 10) || 7)),
+        garantiaMeses: parseInt(f.garantiaMeses.value, 10) || 0,
+        clausulaLimpieza: f.clausulaLimpieza.checked,
+        clausulasExtra: f.clausulasExtra.value.trim()
+      }
+    }, { merge: true });
+    aviso(cambiaModo ? "Guardado. Ahora conecta tu Drive" : "Ajustes guardados");
+    if (cambiaModo) vistaAjustes();
+  };
+  $("#invitar").onclick = async () => {
+    const email = $("#nuevo-miembro").value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email)) return aviso("Escribe un email v\xE1lido", true);
+    try {
+      await invitarMiembro(email);
+      aviso(`Listo: ${email} ya puede entrar con su cuenta de Google`);
+      vistaAjustes();
+    } catch (e) {
+      aviso("No se pudo a\xF1adir: " + e.message, true);
+    }
+  };
+  $$("[data-quitar-miembro]").forEach((b) => b.onclick = async () => {
+    if (!preguntar(`\xBFQuitar a ${b.dataset.quitarMiembro} del equipo?`)) return;
+    await quitarMiembro(b.dataset.quitarMiembro, cuenta);
+    aviso("Quitado del equipo");
+    vistaAjustes();
+  });
+  if ($("#exportar")) $("#exportar").onclick = async () => {
+    aviso("Preparando la copia\u2026");
+    const copia = await exportarCuenta();
+    const url = URL.createObjectURL(new Blob([JSON.stringify(copia, null, 2)], { type: "application/json" }));
+    const enl = Object.assign(document.createElement("a"), { href: url, download: `mis-datos-${hoyISO()}.json` });
+    document.body.appendChild(enl);
+    enl.click();
+    enl.remove();
+  };
+  if ($("#borrar-cuenta")) $("#borrar-cuenta").onclick = () => {
+    $("#confirmar-borrado").innerHTML = `<div class="tarjeta" style="gap:10px">
+      <div class="meta" style="color:#A2321F">Se borrar\xE1n para siempre tus pisos, inquilinos, contratos, firmas y facturas de la app, y los enlaces dejar\xE1n de funcionar. Los archivos de tu Google Drive no se tocan.</div>
+      ${campo("Escribe BORRAR para confirmar", "conf", "", 'id="conf-borrar" autocapitalize="characters"')}
+      <button class="btn peligro" id="borrar-ya" style="border:1px solid #A2321F">Borrar definitivamente</button></div>`;
+    $("#borrar-ya").onclick = async (e) => {
+      if ($("#conf-borrar").value.trim().toUpperCase() !== "BORRAR") return aviso("Escribe BORRAR para confirmar", true);
+      e.target.disabled = true;
+      e.target.textContent = "Borrando\u2026";
+      try {
+        await borrarCuenta();
+        aviso("Cuenta borrada");
+        await signOut(auth);
+        location.hash = "#/";
+      } catch (err) {
+        aviso("No se pudo borrar: " + err.message, true);
+        e.target.disabled = false;
+      }
+    };
+  };
+  if ($("#salir-equipo")) $("#salir-equipo").onclick = async () => {
+    if (!preguntar("\xBFSalir de este equipo? Dejar\xE1s de ver sus pisos y contratos.")) return;
+    await quitarMiembro(yo, cuenta);
+    await deleteDoc(doc(db, "usuarios", usuario.uid)).catch(() => {
+    });
+    cuentaLista = { uid: null, ok: false };
+    location.hash = "#/";
+    enrutar();
+  };
+  $("#salir").onclick = () => signOut(auth);
+}
+var COLS = ["ajustes", "pisos", "invitaciones", "contratos", "facturas"];
+var SUBS = { invitaciones: ["respuestas"], contratos: ["firmas", "estados"] };
+async function recorrerCuenta(fn) {
+  for (const col of COLS) {
+    const s = await getDocs(C(col));
+    for (const d of s.docs) {
+      for (const sub of SUBS[col] || []) {
+        const ss = await getDocs(C(col, d.id, sub));
+        for (const x of ss.docs) await fn([col, d.id, sub, x.id], x);
+      }
+      await fn([col, d.id], d);
+    }
+  }
+}
+async function exportarCuenta() {
+  const out = { exportado: (/* @__PURE__ */ new Date()).toISOString(), cuenta: await leerCuenta(), datos: {} };
+  await recorrerCuenta(async (ruta, d) => {
+    out.datos[ruta.join("/")] = d.data();
+  });
+  return out;
+}
+async function borrarCuenta() {
+  await recorrerCuenta(async (ruta) => {
+    if (ruta.length === 2 && ruta[0] === "invitaciones") await deleteDoc(doc(db, "enlaces", ruta[1])).catch(() => {
+    });
+    await deleteDoc(D(...ruta));
+  });
+  const cuenta = await leerCuenta();
+  for (const e of cuenta?.emailsMiembros || []) await deleteDoc(doc(db, "accesos", e)).catch(() => {
+  });
+  await deleteDoc(doc(db, "cuentas", CID));
+  await deleteDoc(doc(db, "usuarios", usuario.uid)).catch(() => {
+  });
+  cuentaLista = { uid: null, ok: false };
+}
 async function enrutar() {
   const partes = (location.hash.replace(/^#\/?/, "") || "").split("/");
   const [ruta, arg] = partes;
   try {
     if (ruta === "i") return await vistaInquilino(arg);
+    if (ruta === "legal") return vistaLegal(arg);
     if (!authListo) return;
-    if (!await comprobarPropietario()) return await vistaLogin();
+    if (!usuario) return await vistaLogin();
+    if (!await prepararCuenta()) {
+      pintar(`<div class="gracias"><h1>No se pudo abrir tu cuenta</h1><p class="ayuda">${esc(cuentaLista.error || "")}</p>
+        <button class="btn secundario" id="reintentar">Reintentar</button></div>`);
+      $("#reintentar").onclick = () => {
+        cuentaLista = { uid: null };
+        enrutar();
+      };
+      return;
+    }
     switch (ruta) {
+      case "bienvenida":
+        return await vistaBienvenida();
       case "":
         return await vistaPanel();
       case "pisos":
@@ -2406,6 +3201,7 @@ window.addEventListener("hashchange", enrutar);
 onAuthStateChanged(auth, (u) => {
   usuario = u;
   authListo = true;
-  if (!location.hash.startsWith("#/i/")) enrutar();
+  if (!u) cuentaLista = { uid: null, ok: false };
+  if (!location.hash.startsWith("#/i/") && !location.hash.startsWith("#/legal/")) enrutar();
 });
-if (location.hash.startsWith("#/i/")) enrutar();
+if (location.hash.startsWith("#/i/") || location.hash.startsWith("#/legal/")) enrutar();

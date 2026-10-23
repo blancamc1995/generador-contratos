@@ -5,7 +5,19 @@
 import { CONFIG } from "./firebase-config.js";
 import { DEMO } from "./datos.js";
 
-const SCOPE = "https://www.googleapis.com/auth/drive";
+// Dos modos:
+//  - "propia" (por defecto): la app crea y usa su propia carpeta en el Drive del
+//    usuario. Permiso limitado (drive.file): solo ve lo que ella crea.
+//  - "completo": organiza dentro de carpetas que ya existían (p. ej. Rentas /
+//    Renta 2026). Necesita permiso de lectura de todo el Drive.
+const SCOPES = {
+  propia: "https://www.googleapis.com/auth/drive.file",
+  completo: "https://www.googleapis.com/auth/drive",
+};
+let MODO = "propia";
+export function configurar(modo) { MODO = modo === "completo" ? "completo" : "propia"; }
+export function modo() { return MODO; }
+const tokens = {};
 let token = null, caduca = 0;
 
 function esperar(cond, ms = 8000) {
@@ -20,22 +32,34 @@ function esperar(cond, ms = 8000) {
 }
 
 async function obtenerToken() {
-  if (token && Date.now() < caduca - 60000) return token;
+  const t0 = tokens[MODO];
+  if (t0 && Date.now() < t0.caduca - 60000) { token = t0.token; return token; }
   await esperar(() => window.google?.accounts?.oauth2);
   return new Promise((ok, ko) => {
     const cliente = google.accounts.oauth2.initTokenClient({
       client_id: CONFIG.googleClientId,
-      scope: SCOPE,
+      scope: SCOPES[MODO],
       callback: (r) => {
         if (r.error) return ko(new Error(r.error));
-        token = r.access_token;
-        caduca = Date.now() + r.expires_in * 1000;
+        tokens[MODO] = { token: r.access_token, caduca: Date.now() + r.expires_in * 1000 };
+        token = r.access_token; caduca = tokens[MODO].caduca;
         ok(token);
       },
       error_callback: (e) => ko(new Error(e?.message || "Permiso de Drive cancelado")),
     });
     cliente.requestAccessToken({ prompt: "" });
   });
+}
+
+/** Crea una carpeta (por defecto en la raíz de Mi unidad). Devuelve {id, name}. */
+export async function crearCarpeta(nombre, padre = "root") {
+  if (DEMO) return { id: "demo-" + nombre, name: nombre };
+  const c = await api(`https://www.googleapis.com/drive/v3/files?fields=id,name&${COMUNES}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: nombre, mimeType: "application/vnd.google-apps.folder", parents: [padre] }),
+  });
+  return c.json();
 }
 
 async function api(url, opciones = {}) {

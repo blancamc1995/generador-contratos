@@ -19,6 +19,20 @@ export const CONFIG = {
   // Número del proyecto (Configuración del proyecto en Firebase → General).
   googleProjectNumber: "221718655510",
 
-  // Nombre con el que os saluda el panel.
-  saludo: "Blanca y Manu",
+  // Nombre de la aplicación (portada, textos legales, pestaña).
+  nombreApp: "Contratos de alquiler",
+
+  // Carpeta que crea la app en el Drive de cada usuario (modo «carpeta propia»).
+  carpetaRaiz: "Alquileres",
+
+  // Titular del servicio: aparece en el aviso legal y la política de privacidad.
+  // ⚠️ Rellenar antes de comercializar (la LSSI obliga a mostrarlo).
+  titular: {
+    nombre: "",
+    nif: "",
+    domicilio: "",
+    email: "",
+    fechaTextos: "octubre de 2026",
+  },
+  versionTextos: "1",
 };

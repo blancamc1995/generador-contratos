@@ -1,88 +1,147 @@
 rules_version = '2';
 
-// Reglas de seguridad. Pégalas en Firebase → Firestore Database → Reglas,
-// sustituyendo los dos emails. No hace falta subir los emails reales a GitHub.
+// Reglas de seguridad de la versión multiusuario.
+// Pégalas en Firebase → Firestore Database → Reglas → Publicar.
+//
+//   usuarios/{uid}            cada usuario, a qué cuenta pertenece
+//   cuentas/{cid}/...         todos los datos de una cuenta (solo sus miembros)
+//   accesos/{email}           invitaciones para unirse a un equipo
+//   enlaces/{token}           enlace público del inquilino → su cuenta
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function propietario() {
-      return request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() in [
-          'EMAIL_DE_BLANCA@gmail.com',
-          'EMAIL_DE_MANU@gmail.com'
-        ];
+    function autenticado() { return request.auth != null; }
+    function miEmail() { return request.auth.token.email.lower(); }
+    function emailVerificado() { return autenticado() && request.auth.token.email_verified == true; }
+    function cuenta(cid) { return get(/databases/$(database)/documents/cuentas/$(cid)).data; }
+    function miembro(cid) {
+      return autenticado() && exists(/databases/$(database)/documents/cuentas/$(cid))
+        && request.auth.uid in cuenta(cid).miembros;
     }
-
     function texto(v, max) { return v is string && v.size() <= max; }
-
     function persona(p) {
       return p is map
         && texto(p.tratamiento, 5) && texto(p.nombre, 120)
         && texto(p.tipoDoc, 12) && texto(p.numDoc, 30)
         && (!('parentesco' in p) || texto(p.parentesco, 40));
     }
-
-    // Los propietarios pueden leer y escribir todo.
-    match /{document=**} {
-      allow read, write: if propietario();
+    function soloCambia(campos) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
     }
 
-    // Contratos enviados a firmar: quien tiene el enlace puede leerlos y
-    // firmar SU parte una sola vez. Los arrendadores firman con su sesión.
-    match /contratos/{cid} {
-      allow get: if resource.data.estado in ['firmando', 'firmado'];
+    // ---------- usuarios ----------
+    match /usuarios/{uid} {
+      allow read, delete: if autenticado() && request.auth.uid == uid;
+      allow create, update: if autenticado() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['cuentaId', 'email', 'desde'])
+        && (miembro(request.resource.data.cuentaId) || request.resource.data.cuentaId == uid);
+    }
 
-      function contrato() { return get(/databases/$(database)/documents/contratos/$(cid)).data; }
+    // ---------- cuentas ----------
+    match /cuentas/{cid} {
+      allow read: if miembro(cid)
+        || (emailVerificado() && miEmail() in resource.data.emailsMiembros);
+      // Crear la propia cuenta (su id es el uid del creador).
+      allow create: if autenticado() && cid == request.auth.uid
+        && request.resource.data.propietario == request.auth.uid
+        && request.resource.data.miembros == [request.auth.uid];
+      // Los miembros gestionan el equipo; el titular no se puede quitar.
+      allow update: if miembro(cid)
+        && request.resource.data.propietario == resource.data.propietario
+        && resource.data.propietario in request.resource.data.miembros
+        && soloCambia(['nombre', 'miembros', 'emailsMiembros', 'correos', 'plan']);
+      // Unirse a un equipo al que te han invitado: solo añadirte a ti.
+      allow update: if emailVerificado() && miEmail() in resource.data.emailsMiembros
+        && soloCambia(['miembros', 'correos'])
+        && request.resource.data.miembros.toSet() == resource.data.miembros.toSet().union([request.auth.uid].toSet())
+        && request.resource.data.correos[request.auth.uid] == miEmail();
+      // Salir de un equipo: quitarte a ti mismo (sin ser el titular).
+      allow update: if autenticado() && request.auth.uid in resource.data.miembros
+        && request.auth.uid != resource.data.propietario
+        && soloCambia(['miembros', 'emailsMiembros', 'correos'])
+        && !(request.auth.uid in request.resource.data.miembros);
+      allow delete: if autenticado() && resource.data.propietario == request.auth.uid;
 
-      // La imagen de cada firma: solo la ven los arrendadores, y el inquilino
-      // únicamente cuando le habilitáis su copia firmada.
-      match /firmas/{fid} {
-        allow read: if contrato().get('copiaHabilitada', false) == true;
-        allow create: if contrato().estado == 'firmando'
-          && fid in contrato().firmantesIds
-          && !fid.matches('arr[0-9]+')
-          && request.resource.data.keys().hasOnly(['nombre', 'numDoc', 'rol', 'imagen', 'huella',
-               'aceptado', 'firmadoEl', 'dispositivo'])
-          && request.resource.data.huella == contrato().huella
-          && request.resource.data.aceptado == true
-          && request.resource.data.firmadoEl == request.time
-          && texto(request.resource.data.imagen, 300000)
-          && request.resource.data.imagen.matches('data:image/png;base64,.*')
-          && texto(request.resource.data.dispositivo, 200);
+      // Todo lo de dentro: solo los miembros.
+      match /{document=**} {
+        allow read, write: if miembro(cid);
       }
 
-      // Quién ha firmado y cuándo (sin imagen), para mostrar el progreso.
-      match /estados/{fid} {
-        allow read: if contrato().estado in ['firmando', 'firmado'];
-        allow create: if contrato().estado == 'firmando'
-          && !fid.matches('arr[0-9]+')
-          && exists(/databases/$(database)/documents/contratos/$(cid)/firmas/$(fid))
-          && request.resource.data.keys().hasOnly(['nombre', 'rol', 'firmadoEl'])
-          && request.resource.data.firmadoEl == request.time;
+      // --- lo que puede hacer un inquilino con su enlace ---
+      match /invitaciones/{token} {
+        allow get: if true;
+        match /respuestas/{id} {
+          allow create: if get(/databases/$(database)/documents/cuentas/$(cid)/invitaciones/$(token)).data.estado == 'abierta'
+            && request.resource.data.keys().hasOnly(['tratamiento', 'nombre', 'tipoDoc', 'numDoc', 'domicilio',
+                 'telefono', 'email', 'avales', 'consentimiento', 'enviada'])
+            && persona(request.resource.data)
+            && texto(request.resource.data.domicilio, 250)
+            && texto(request.resource.data.telefono, 30)
+            && texto(request.resource.data.email, 120)
+            && request.resource.data.consentimiento == true
+            && request.resource.data.enviada == request.time
+            && request.resource.data.avales is list
+            && request.resource.data.avales.size() <= 6;
+        }
+      }
+
+      match /contratos/{k} {
+        function contrato() { return get(/databases/$(database)/documents/cuentas/$(cid)/contratos/$(k)).data; }
+        allow get: if resource.data.estado in ['firmando', 'firmado'];
+
+        // Imagen de la firma: el inquilino solo la ve cuando le habilitáis su copia.
+        match /firmas/{fid} {
+          allow read: if contrato().get('copiaHabilitada', false) == true;
+          allow create: if contrato().estado == 'firmando'
+            && fid in contrato().firmantesIds
+            && !fid.matches('arr[0-9]+')
+            && request.resource.data.keys().hasOnly(['nombre', 'numDoc', 'rol', 'imagen', 'huella',
+                 'aceptado', 'firmadoEl', 'dispositivo'])
+            && request.resource.data.huella == contrato().huella
+            && request.resource.data.aceptado == true
+            && request.resource.data.firmadoEl == request.time
+            && texto(request.resource.data.imagen, 300000)
+            && request.resource.data.imagen.matches('data:image/png;base64,.*')
+            && texto(request.resource.data.dispositivo, 200);
+        }
+        // Quién ha firmado y cuándo (sin imagen).
+        match /estados/{fid} {
+          allow read: if contrato().estado in ['firmando', 'firmado'];
+          allow create: if contrato().estado == 'firmando'
+            && !fid.matches('arr[0-9]+')
+            && exists(/databases/$(database)/documents/cuentas/$(cid)/contratos/$(k)/firmas/$(fid))
+            && request.resource.data.keys().hasOnly(['nombre', 'rol', 'firmadoEl'])
+            && request.resource.data.firmadoEl == request.time;
+        }
       }
     }
 
-    match /invitaciones/{token} {
-      // El inquilino solo puede abrir SU invitación conociendo el enlace
-      // (no puede listar las demás).
+    // ---------- invitaciones a un equipo ----------
+    match /accesos/{email} {
+      allow read: if emailVerificado() && miEmail() == email;
+      allow delete: if (emailVerificado() && miEmail() == email) || miembro(resource.data.cuentaId);
+      allow create, update: if miembro(request.resource.data.cuentaId)
+        && request.resource.data.keys().hasOnly(['cuentaId', 'invitadoEl']);
+    }
+
+    // ---------- enlaces de inquilino ----------
+    match /enlaces/{token} {
       allow get: if true;
-
-      // Y solo puede añadir sus datos mientras el enlace esté abierto.
-      // Nunca puede leer lo que han enviado otros.
-      match /respuestas/{id} {
-        allow create: if get(/databases/$(database)/documents/invitaciones/$(token)).data.estado == 'abierta'
-          && request.resource.data.keys().hasOnly(['tratamiento', 'nombre', 'tipoDoc', 'numDoc', 'domicilio',
-               'telefono', 'email', 'avales', 'consentimiento', 'enviada'])
-          && persona(request.resource.data)
-          && texto(request.resource.data.domicilio, 250)
-          && texto(request.resource.data.telefono, 30)
-          && texto(request.resource.data.email, 120)
-          && request.resource.data.consentimiento == true
-          && request.resource.data.enviada == request.time
-          && request.resource.data.avales is list
-          && request.resource.data.avales.size() <= 6;
-      }
+      allow create, update: if miembro(request.resource.data.cuentaId)
+        && request.resource.data.keys().hasOnly(['cuentaId']);
+      allow delete: if miembro(resource.data.cuentaId);
     }
+
+    // ---------- datos de la versión anterior (solo para migrarlos) ----------
+    // Cambia los dos emails por los vuestros. Cuando la migración esté hecha
+    // se puede borrar este bloque.
+    function usuarioAntiguo() {
+      return emailVerificado() && miEmail() in ['blancamc95@gmail.com', 'masegui01@gmail.com'];
+    }
+    match /ajustes/{d} { allow read, update: if usuarioAntiguo(); }
+    match /pisos/{d=**} { allow read: if usuarioAntiguo(); }
+    match /invitaciones/{d=**} { allow read: if usuarioAntiguo(); }
+    match /contratos/{d=**} { allow read: if usuarioAntiguo(); }
+    match /facturas/{d=**} { allow read: if usuarioAntiguo(); }
   }
 }
