@@ -233,7 +233,9 @@ function contratoEstudiantes(datos) {
   bloquesReunidos(datos, add, c, { conDomicilioTitulo: "a efectos de notificaciones" });
 
   add("heading", "EXPONEN");
-  add("p", `I. Que EL ARRENDADOR es propietario de la vivienda sita en ${dir}.`);
+  const nH = parseInt(datos.piso.numHabitaciones, 10) || 0;
+  const descr = sinPunto(datos.piso.descripcion || "") || (nH ? `compuesta por ${nH} ${nH === 1 ? "dormitorio" : "dormitorios"}` : "");
+  add("p", `I. Que EL ARRENDADOR es propietario de la vivienda sita en ${dir}${descr ? `, ${descr}` : ""}.`);
   add("p", `II. Que EL ARRENDADOR está interesado en ceder en arrendamiento ${esHab ? "una habitación" : "la totalidad"} de dicha vivienda, con destino a vivienda habitual y permanente de ${ARR}, de conformidad con el artículo 2 de la ${LAU} (en adelante, "LAU").`);
   add("p", `III. Que ${ARR} ${v("está interesado", "están interesados")} en concertar dicho arrendamiento en los términos y condiciones que se especifican a continuación.`);
   add("p", "En su virtud, las partes formalizan el presente CONTRATO DE ARRENDAMIENTO DE VIVIENDA, que se regirá por la LAU y, en lo no previsto en ella, por el Código Civil, y en particular por las siguientes");
@@ -390,7 +392,16 @@ function contratoLargaDuracion(datos) {
   }
 
   add("subheading", c.siguiente("Gastos y suministros."));
-  add("p", "Serán de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y demás tributos que graven la propiedad.");
+  const G = datos.gastos || {};
+  const NOMBRES_G = { comunidad: "los gastos de la comunidad de propietarios", ibi: "el Impuesto sobre Bienes Inmuebles", basura: "la tasa de recogida de basuras" };
+  const delInquilino = Object.keys(NOMBRES_G).filter(k => G[k]?.quien === "arrendatario");
+  const delPropietario = Object.keys(NOMBRES_G).filter(k => !delInquilino.includes(k));
+  const lista = (ks) => ks.map(k => NOMBRES_G[k]).join(ks.length > 1 ? ", " : "").replace(/, ([^,]*)$/, " y $1");
+  if (delPropietario.length === 3) add("p", "Serán de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y demás tributos que graven la propiedad.");
+  else if (delPropietario.length) add("p", `Serán de cuenta de EL ARRENDADOR ${lista(delPropietario)} y demás tributos que graven la propiedad.`);
+  if (delInquilino.length) {
+    add("p", `De conformidad con el artículo 20.1 de la LAU, las partes pactan que serán de cuenta de ${ARR} ${lista(delInquilino)}, cuyo importe anual a la fecha de este contrato asciende a: ${delInquilino.map(k => `${NOMBRES_G[k].replace(/^(los|el|la) /, "")}, ${euros(G[k].importe)}`).join("; ")}. ${ARR} ${v("abonará", "abonarán")} dichas cantidades a EL ARRENDADOR junto con la renta, en la proporción mensual correspondiente, previa justificación de su importe.`);
+  }
   add("p", `Serán de cuenta de ${ARR} los gastos por consumo de energía eléctrica. A tal efecto, ${ARR} ${v("deberá", "deberán")}, en el plazo más breve posible desde la entrada en vigor del presente contrato, tramitar el cambio de titularidad de dicho suministro a su nombre y con cargo a su cuenta bancaria.`);
   if (cuotaAgua > 0) {
     add("p", `En cuanto al suministro de agua, ${ARR} ${v("abonará", "abonarán")} a EL ARRENDADOR la cantidad fija de ${euros(cuotaAgua)} mensuales indicada en la cláusula de renta.`);

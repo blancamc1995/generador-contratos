@@ -326,10 +326,14 @@ async function vistaPisos() {
     <div class="acciones"><a class="btn primario ancho" href="#/piso/nuevo">${ICO.mas} Añadir piso</a></div>`, "pisos");
 }
 
+// Opciones de luz que se ofrecen (la regularización C solo se muestra si un piso antiguo ya la tenía).
+const LUZ_OFRECIDAS = ["A", "B", "D"];
+
 function camposLuz(luz = { opcion: "D" }) {
+  const opciones = Object.entries(LUZ).filter(([k]) => LUZ_OFRECIDAS.includes(k) || k === luz.opcion);
   return `<div class="eti-campo">Luz</div>
     <div class="seccion" style="padding:0;gap:8px" id="opciones-luz">
-      ${Object.entries(LUZ).map(([k, o]) => `<button type="button" class="opcion-luz ${luz.opcion === k ? "on" : ""}" data-luz="${k}"><b>${o.t}</b><span>${o.d}</span></button>`).join("")}
+      ${opciones.map(([k, o]) => `<button type="button" class="opcion-luz ${luz.opcion === k ? "on" : ""}" data-luz="${k}"><b>${o.t}</b><span>${o.d}</span></button>`).join("")}
     </div>
     <input type="hidden" name="luzOpcion" value="${esc(luz.opcion)}">
     <div class="rejilla" id="luz-importes">
@@ -363,6 +367,13 @@ function camposAgua(agua = { opcion: "cuota", cuota: "" }) {
     ${campo("Cuota mensual de agua (€)", "aguaCuota", agua.cuota ?? "", 'inputmode="decimal"')}`;
 }
 
+function camposGasto(clave, titulo, g = {}) {
+  return `<div class="tarjeta" data-gasto="${clave}" style="gap:8px">
+    <div class="nombre" style="font-size:14px">${titulo}</div>
+    ${segmento(`gasto_${clave}`, [["arrendador", "La pago yo"], ["arrendatario", "La paga el inquilino"]], g.quien || "arrendador")}
+    <div data-importe>${campo("Importe anual (€)", `gasto_${clave}_importe`, g.importe || "", 'inputmode="decimal"')}</div></div>`;
+}
+
 function leerCondiciones(root) {
   const v = (n) => ($(`[name="${n}"]`, root)?.value ?? "").trim();
   return {
@@ -374,7 +385,7 @@ function leerCondiciones(root) {
 async function vistaPiso(id) {
   await leerAjustes();
   const nuevo = id === "nuevo";
-  const p = nuevo ? { plantilla: "habitacion", ciudad: "", luz: { opcion: "C" }, agua: { opcion: "cuota" } }
+  const p = nuevo ? { plantilla: "habitacion", ciudad: "", luz: { opcion: "D" }, agua: { opcion: "incluida" } }
     : (await getDoc(D("pisos", id))).data();
   if (!p) return pintar(`${cabVolver("Piso no encontrado", "", "#/pisos")}`, "pisos");
 
@@ -383,14 +394,28 @@ async function vistaPiso(id) {
       ${campo("Nombre corto", "nombre", p.nombre, 'placeholder="Piso Centro"')}
       ${campo("Dirección completa", "direccion", p.direccion, 'placeholder="Calle, número, piso, CP y ciudad"')}
       ${campo("Ciudad donde se firma", "ciudad", p.ciudad)}
-      <div class="eti-campo">Tipo de contrato habitual</div>
+      <div class="eti-campo">Tipo de contrato</div>
       ${segmento("plantilla", Object.entries(PLANTILLAS), p.plantilla)}
-      ${campo("Habitaciones (separadas por comas)", "habitaciones", (p.habitaciones || []).join(", "), 'placeholder="1, 2, 3, 4"')}
-      <label class="campo">Descripción (larga duración)<textarea name="descripcion" placeholder="Piso de tres dormitorios, cocina con lavadero, salón y baño">${esc(p.descripcion || "")}</textarea></label>
+      <div data-solo="habitacion piso_entero">
+        ${campo("Número de habitaciones", "numHabitaciones", p.numHabitaciones || (p.habitaciones || []).length || "", 'type="number" min="1" max="20" inputmode="numeric" placeholder="4"')}
+      </div>
+      <label class="campo">Descripción de la vivienda<textarea name="descripcion" placeholder="Con tres dormitorios, cocina con lavadero, salón y baño">${esc(p.descripcion || "")}</textarea></label>
       ${campo("Renta habitual (€)", "renta", p.renta ?? "", 'inputmode="decimal"')}
       ${drive.modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p.carpetaFacturas || "", 'placeholder="Facturas piso centro"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p.carpetaFacturas || "")}">`}
-      ${camposLuz(p.luz)}
-      ${camposAgua(p.agua)}
+      <div data-solo="habitacion piso_entero" class="seccion" style="padding:0">
+        ${camposLuz(p.luz)}
+        <p class="ayuda">El agua y el wifi van incluidos en la renta.</p>
+      </div>
+      <div data-solo="larga_duracion" class="seccion" style="padding:0">
+        <div class="eti-campo">Luz</div>
+        <div class="tarjeta"><div class="nombre" style="font-size:14px">Cambio de titularidad</div><div class="meta">El inquilino pone la luz a su nombre.</div></div>
+        ${camposAgua(p.agua)}
+        <div class="eti-campo">Gastos de la vivienda</div>
+        <p class="ayuda">Por ley los paga el propietario, salvo que pactéis que los asuma el inquilino indicando su importe anual (art. 20 LAU).</p>
+        ${camposGasto("comunidad", "Comunidad de propietarios", p.gastos?.comunidad)}
+        ${camposGasto("ibi", "IBI (impuesto de bienes inmuebles)", p.gastos?.ibi)}
+        ${camposGasto("basura", "Tasa de basura", p.gastos?.basura)}
+      </div>
       <div class="eti-campo">Fotos del piso</div>
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="fotos-nombre">${esc(p.fotosNombre || "Sin PDF de fotos")}</div>
         <div class="meta">Se añade al final de cada contrato</div></div>
@@ -408,6 +433,14 @@ async function vistaPiso(id) {
   const f = $("#f");
   activarSegmentos(f);
   activarLuz(f);
+  const ajustarTipo = () => {
+    const t = f.plantilla.value;
+    $$("[data-solo]", f).forEach(el => (el.style.display = el.dataset.solo.split(" ").includes(t) ? "" : "none"));
+    $$("[data-gasto]", f).forEach(g => (g.querySelector("[data-importe]").style.display = g.querySelector("input[type=hidden]").value === "arrendatario" ? "" : "none"));
+  };
+  f.addEventListener("change", ajustarTipo);
+  f.addEventListener("click", () => setTimeout(ajustarTipo, 0));
+  ajustarTipo();
 
   $("#subir-fotos").onchange = async (e) => {
     const archivo = e.target.files[0];
@@ -435,10 +468,21 @@ async function vistaPiso(id) {
   $("#guardar").onclick = async () => {
     const v = (n) => f[n].value.trim();
     if (!v("nombre") || !v("direccion")) return aviso("Faltan el nombre y la dirección", true);
+    const tipo = v("plantilla");
+    const n = Math.min(20, Math.max(0, parseInt(v("numHabitaciones"), 10) || 0));
+    if (tipo !== "larga_duracion" && !n) return aviso("Indica el número de habitaciones", true);
+    const cond = leerCondiciones(f);
+    if (tipo === "larga_duracion") cond.luz = { opcion: "A" };
+    const gastos = {};
+    for (const g of ["comunidad", "ibi", "basura"]) gastos[g] = { quien: v(`gasto_${g}`) || "arrendador", importe: v(`gasto_${g}_importe`) };
+    if (tipo === "larga_duracion" && Object.values(gastos).some(g => g.quien === "arrendatario" && !g.importe))
+      return aviso("Indica el importe anual de los gastos que paga el inquilino", true);
     const datos = {
-      nombre: v("nombre"), direccion: v("direccion"), ciudad: v("ciudad"), plantilla: v("plantilla"),
-      habitaciones: v("habitaciones").split(",").map(s => s.trim()).filter(Boolean),
-      descripcion: v("descripcion"), renta: v("renta"), carpetaFacturas: v("carpetaFacturas"), ...leerCondiciones(f),
+      nombre: v("nombre"), direccion: v("direccion"), ciudad: v("ciudad"), plantilla: tipo,
+      numHabitaciones: tipo === "larga_duracion" ? 0 : n,
+      habitaciones: tipo === "larga_duracion" ? [] : Array.from({ length: n }, (_, i) => String(i + 1)),
+      gastos: tipo === "larga_duracion" ? gastos : {},
+      descripcion: v("descripcion"), renta: v("renta"), carpetaFacturas: v("carpetaFacturas"), ...cond,
       fotosDriveId: v("fotosDriveId"), fotosNombre: v("fotosNombre"), actualizado: serverTimestamp(),
     };
     if (nuevo) await addDoc(C("pisos"), datos);
@@ -706,11 +750,12 @@ function datosContrato(inv, grupo, ajustes, fechaFirma, piso, conFotos) {
     ciudadFirma: inv.ciudad || ajustes.ciudadFirma || "",
     condiciones: ajustes.condiciones || {},
     cambiosModelo: ajustes.modelos?.[inv.plantilla] || [],
+    gastos: piso?.gastos || {},
     fechaFirma,
     propietarios: ajustes.propietarios,
     domicilioPropietarios: ajustes.domicilio,
     iban: ajustes.iban,
-    piso: { nombre: inv.pisoNombre, direccion: inv.pisoDireccion, descripcion: piso?.descripcion || "" },
+    piso: { nombre: inv.pisoNombre, direccion: inv.pisoDireccion, descripcion: piso?.descripcion || "", numHabitaciones: piso?.numHabitaciones || 0 },
     habitacion: inv.habitacion,
     inquilinos: grupo.map(r => ({
       tratamiento: r.tratamiento, nombre: r.nombre, tipoDoc: r.tipoDoc, numDoc: r.numDoc, domicilio: r.domicilio,
@@ -1550,7 +1595,7 @@ async function vistaLogin() {
       <div class="p-hero-texto">
         <div class="p-eti">Para propietarios que alquilan pisos y habitaciones</div>
         <h1>Del primer mensaje al contrato firmado, sin papeles.</h1>
-        <p class="p-sub">Mandas un enlace a tu inquilino. Él rellena sus datos y los de sus avalistas desde el móvil, el contrato se genera solo y lo firma cada uno con el dedo. El PDF firmado acaba ordenado en tu Google Drive.</p>
+        <p class="p-sub">Mandas un enlace a tu inquilino. Él rellena sus datos y los de sus avalistas desde el móvil, el contrato se genera solo y lo firma cada uno con el dedo. El PDF firmado acaba ordenado en tu Google Drive, junto a las facturas de cada piso, listo para la declaración de la renta.</p>
         <div class="p-ctas">
           <button class="btn primario" data-entrar>Solicitar acceso</button>
           <a class="btn secundario" href="${demo}">Ver la demo</a>

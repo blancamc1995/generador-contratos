@@ -520,7 +520,9 @@ function contratoEstudiantes(datos) {
   add("heading", "REUNIDOS");
   bloquesReunidos(datos, add, c, { conDomicilioTitulo: "a efectos de notificaciones" });
   add("heading", "EXPONEN");
-  add("p", `I. Que EL ARRENDADOR es propietario de la vivienda sita en ${dir}.`);
+  const nH = parseInt(datos.piso.numHabitaciones, 10) || 0;
+  const descr = sinPunto(datos.piso.descripcion || "") || (nH ? `compuesta por ${nH} ${nH === 1 ? "dormitorio" : "dormitorios"}` : "");
+  add("p", `I. Que EL ARRENDADOR es propietario de la vivienda sita en ${dir}${descr ? `, ${descr}` : ""}.`);
   add("p", `II. Que EL ARRENDADOR est\xE1 interesado en ceder en arrendamiento ${esHab ? "una habitaci\xF3n" : "la totalidad"} de dicha vivienda, con destino a vivienda habitual y permanente de ${ARR}, de conformidad con el art\xEDculo 2 de la ${LAU} (en adelante, "LAU").`);
   add("p", `III. Que ${ARR} ${v("est\xE1 interesado", "est\xE1n interesados")} en concertar dicho arrendamiento en los t\xE9rminos y condiciones que se especifican a continuaci\xF3n.`);
   add("p", "En su virtud, las partes formalizan el presente CONTRATO DE ARRENDAMIENTO DE VIVIENDA, que se regir\xE1 por la LAU y, en lo no previsto en ella, por el C\xF3digo Civil, y en particular por las siguientes");
@@ -646,7 +648,16 @@ function contratoLargaDuracion(datos) {
     bloqueFiadores(add, c, objetoRef, false);
   }
   add("subheading", c.siguiente("Gastos y suministros."));
-  add("p", "Ser\xE1n de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y dem\xE1s tributos que graven la propiedad.");
+  const G = datos.gastos || {};
+  const NOMBRES_G = { comunidad: "los gastos de la comunidad de propietarios", ibi: "el Impuesto sobre Bienes Inmuebles", basura: "la tasa de recogida de basuras" };
+  const delInquilino = Object.keys(NOMBRES_G).filter((k) => G[k]?.quien === "arrendatario");
+  const delPropietario = Object.keys(NOMBRES_G).filter((k) => !delInquilino.includes(k));
+  const lista = (ks) => ks.map((k) => NOMBRES_G[k]).join(ks.length > 1 ? ", " : "").replace(/, ([^,]*)$/, " y $1");
+  if (delPropietario.length === 3) add("p", "Ser\xE1n de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y dem\xE1s tributos que graven la propiedad.");
+  else if (delPropietario.length) add("p", `Ser\xE1n de cuenta de EL ARRENDADOR ${lista(delPropietario)} y dem\xE1s tributos que graven la propiedad.`);
+  if (delInquilino.length) {
+    add("p", `De conformidad con el art\xEDculo 20.1 de la LAU, las partes pactan que ser\xE1n de cuenta de ${ARR} ${lista(delInquilino)}, cuyo importe anual a la fecha de este contrato asciende a: ${delInquilino.map((k) => `${NOMBRES_G[k].replace(/^(los|el|la) /, "")}, ${euros(G[k].importe)}`).join("; ")}. ${ARR} ${v("abonar\xE1", "abonar\xE1n")} dichas cantidades a EL ARRENDADOR junto con la renta, en la proporci\xF3n mensual correspondiente, previa justificaci\xF3n de su importe.`);
+  }
   add("p", `Ser\xE1n de cuenta de ${ARR} los gastos por consumo de energ\xEDa el\xE9ctrica. A tal efecto, ${ARR} ${v("deber\xE1", "deber\xE1n")}, en el plazo m\xE1s breve posible desde la entrada en vigor del presente contrato, tramitar el cambio de titularidad de dicho suministro a su nombre y con cargo a su cuenta bancaria.`);
   if (cuotaAgua > 0) {
     add("p", `En cuanto al suministro de agua, ${ARR} ${v("abonar\xE1", "abonar\xE1n")} a EL ARRENDADOR la cantidad fija de ${euros(cuotaAgua)} mensuales indicada en la cl\xE1usula de renta.`);
@@ -1633,10 +1644,12 @@ async function vistaPisos() {
       <div class="meta">${esc(p2.direccion)}</div></a>`).join("") || '<div class="vacio">Sin pisos todav\xEDa.</div>'}</div>
     <div class="acciones"><a class="btn primario ancho" href="#/piso/nuevo">${ICO.mas} A\xF1adir piso</a></div>`, "pisos");
 }
+var LUZ_OFRECIDAS = ["A", "B", "D"];
 function camposLuz(luz = { opcion: "D" }) {
+  const opciones = Object.entries(LUZ).filter(([k]) => LUZ_OFRECIDAS.includes(k) || k === luz.opcion);
   return `<div class="eti-campo">Luz</div>
     <div class="seccion" style="padding:0;gap:8px" id="opciones-luz">
-      ${Object.entries(LUZ).map(([k, o]) => `<button type="button" class="opcion-luz ${luz.opcion === k ? "on" : ""}" data-luz="${k}"><b>${o.t}</b><span>${o.d}</span></button>`).join("")}
+      ${opciones.map(([k, o]) => `<button type="button" class="opcion-luz ${luz.opcion === k ? "on" : ""}" data-luz="${k}"><b>${o.t}</b><span>${o.d}</span></button>`).join("")}
     </div>
     <input type="hidden" name="luzOpcion" value="${esc(luz.opcion)}">
     <div class="rejilla" id="luz-importes">
@@ -1667,6 +1680,12 @@ function camposAgua(agua = { opcion: "cuota", cuota: "" }) {
     ${segmento("aguaOpcion", [["cuota", "Cuota fija"], ["incluida", "Incluida"]], agua.opcion)}
     ${campo("Cuota mensual de agua (\u20AC)", "aguaCuota", agua.cuota ?? "", 'inputmode="decimal"')}`;
 }
+function camposGasto(clave, titulo, g = {}) {
+  return `<div class="tarjeta" data-gasto="${clave}" style="gap:8px">
+    <div class="nombre" style="font-size:14px">${titulo}</div>
+    ${segmento(`gasto_${clave}`, [["arrendador", "La pago yo"], ["arrendatario", "La paga el inquilino"]], g.quien || "arrendador")}
+    <div data-importe>${campo("Importe anual (\u20AC)", `gasto_${clave}_importe`, g.importe || "", 'inputmode="decimal"')}</div></div>`;
+}
 function leerCondiciones(root) {
   const v = (n) => ($(`[name="${n}"]`, root)?.value ?? "").trim();
   return {
@@ -1677,21 +1696,35 @@ function leerCondiciones(root) {
 async function vistaPiso(id) {
   await leerAjustes();
   const nuevo = id === "nuevo";
-  const p2 = nuevo ? { plantilla: "habitacion", ciudad: "", luz: { opcion: "C" }, agua: { opcion: "cuota" } } : (await getDoc(D("pisos", id))).data();
+  const p2 = nuevo ? { plantilla: "habitacion", ciudad: "", luz: { opcion: "D" }, agua: { opcion: "incluida" } } : (await getDoc(D("pisos", id))).data();
   if (!p2) return pintar(`${cabVolver("Piso no encontrado", "", "#/pisos")}`, "pisos");
   pintar(`${cabVolver(nuevo ? "Nuevo piso" : p2.nombre, "Ficha del piso", "#/pisos")}
     <form class="seccion" id="f">
       ${campo("Nombre corto", "nombre", p2.nombre, 'placeholder="Piso Centro"')}
       ${campo("Direcci\xF3n completa", "direccion", p2.direccion, 'placeholder="Calle, n\xFAmero, piso, CP y ciudad"')}
       ${campo("Ciudad donde se firma", "ciudad", p2.ciudad)}
-      <div class="eti-campo">Tipo de contrato habitual</div>
+      <div class="eti-campo">Tipo de contrato</div>
       ${segmento("plantilla", Object.entries(PLANTILLAS), p2.plantilla)}
-      ${campo("Habitaciones (separadas por comas)", "habitaciones", (p2.habitaciones || []).join(", "), 'placeholder="1, 2, 3, 4"')}
-      <label class="campo">Descripci\xF3n (larga duraci\xF3n)<textarea name="descripcion" placeholder="Piso de tres dormitorios, cocina con lavadero, sal\xF3n y ba\xF1o">${esc(p2.descripcion || "")}</textarea></label>
+      <div data-solo="habitacion piso_entero">
+        ${campo("N\xFAmero de habitaciones", "numHabitaciones", p2.numHabitaciones || (p2.habitaciones || []).length || "", 'type="number" min="1" max="20" inputmode="numeric" placeholder="4"')}
+      </div>
+      <label class="campo">Descripci\xF3n de la vivienda<textarea name="descripcion" placeholder="Con tres dormitorios, cocina con lavadero, sal\xF3n y ba\xF1o">${esc(p2.descripcion || "")}</textarea></label>
       ${campo("Renta habitual (\u20AC)", "renta", p2.renta ?? "", 'inputmode="decimal"')}
       ${modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p2.carpetaFacturas || "", 'placeholder="Facturas piso centro"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p2.carpetaFacturas || "")}">`}
-      ${camposLuz(p2.luz)}
-      ${camposAgua(p2.agua)}
+      <div data-solo="habitacion piso_entero" class="seccion" style="padding:0">
+        ${camposLuz(p2.luz)}
+        <p class="ayuda">El agua y el wifi van incluidos en la renta.</p>
+      </div>
+      <div data-solo="larga_duracion" class="seccion" style="padding:0">
+        <div class="eti-campo">Luz</div>
+        <div class="tarjeta"><div class="nombre" style="font-size:14px">Cambio de titularidad</div><div class="meta">El inquilino pone la luz a su nombre.</div></div>
+        ${camposAgua(p2.agua)}
+        <div class="eti-campo">Gastos de la vivienda</div>
+        <p class="ayuda">Por ley los paga el propietario, salvo que pact\xE9is que los asuma el inquilino indicando su importe anual (art. 20 LAU).</p>
+        ${camposGasto("comunidad", "Comunidad de propietarios", p2.gastos?.comunidad)}
+        ${camposGasto("ibi", "IBI (impuesto de bienes inmuebles)", p2.gastos?.ibi)}
+        ${camposGasto("basura", "Tasa de basura", p2.gastos?.basura)}
+      </div>
       <div class="eti-campo">Fotos del piso</div>
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="fotos-nombre">${esc(p2.fotosNombre || "Sin PDF de fotos")}</div>
         <div class="meta">Se a\xF1ade al final de cada contrato</div></div>
@@ -1709,6 +1742,14 @@ async function vistaPiso(id) {
   const f = $("#f");
   activarSegmentos(f);
   activarLuz(f);
+  const ajustarTipo = () => {
+    const t = f.plantilla.value;
+    $$("[data-solo]", f).forEach((el) => el.style.display = el.dataset.solo.split(" ").includes(t) ? "" : "none");
+    $$("[data-gasto]", f).forEach((g) => g.querySelector("[data-importe]").style.display = g.querySelector("input[type=hidden]").value === "arrendatario" ? "" : "none");
+  };
+  f.addEventListener("change", ajustarTipo);
+  f.addEventListener("click", () => setTimeout(ajustarTipo, 0));
+  ajustarTipo();
   $("#subir-fotos").onchange = async (e) => {
     const archivo = e.target.files[0];
     if (!archivo) return;
@@ -1739,18 +1780,29 @@ async function vistaPiso(id) {
     }
   };
   $("#guardar").onclick = async () => {
-    const v = (n) => f[n].value.trim();
+    const v = (n2) => f[n2].value.trim();
     if (!v("nombre") || !v("direccion")) return aviso("Faltan el nombre y la direcci\xF3n", true);
+    const tipo = v("plantilla");
+    const n = Math.min(20, Math.max(0, parseInt(v("numHabitaciones"), 10) || 0));
+    if (tipo !== "larga_duracion" && !n) return aviso("Indica el n\xFAmero de habitaciones", true);
+    const cond = leerCondiciones(f);
+    if (tipo === "larga_duracion") cond.luz = { opcion: "A" };
+    const gastos = {};
+    for (const g of ["comunidad", "ibi", "basura"]) gastos[g] = { quien: v(`gasto_${g}`) || "arrendador", importe: v(`gasto_${g}_importe`) };
+    if (tipo === "larga_duracion" && Object.values(gastos).some((g) => g.quien === "arrendatario" && !g.importe))
+      return aviso("Indica el importe anual de los gastos que paga el inquilino", true);
     const datos = {
       nombre: v("nombre"),
       direccion: v("direccion"),
       ciudad: v("ciudad"),
-      plantilla: v("plantilla"),
-      habitaciones: v("habitaciones").split(",").map((s) => s.trim()).filter(Boolean),
+      plantilla: tipo,
+      numHabitaciones: tipo === "larga_duracion" ? 0 : n,
+      habitaciones: tipo === "larga_duracion" ? [] : Array.from({ length: n }, (_, i) => String(i + 1)),
+      gastos: tipo === "larga_duracion" ? gastos : {},
       descripcion: v("descripcion"),
       renta: v("renta"),
       carpetaFacturas: v("carpetaFacturas"),
-      ...leerCondiciones(f),
+      ...cond,
       fotosDriveId: v("fotosDriveId"),
       fotosNombre: v("fotosNombre"),
       actualizado: serverTimestamp()
@@ -2026,11 +2078,12 @@ function datosContrato(inv, grupo, ajustes, fechaFirma, piso, conFotos) {
     ciudadFirma: inv.ciudad || ajustes.ciudadFirma || "",
     condiciones: ajustes.condiciones || {},
     cambiosModelo: ajustes.modelos?.[inv.plantilla] || [],
+    gastos: piso?.gastos || {},
     fechaFirma,
     propietarios: ajustes.propietarios,
     domicilioPropietarios: ajustes.domicilio,
     iban: ajustes.iban,
-    piso: { nombre: inv.pisoNombre, direccion: inv.pisoDireccion, descripcion: piso?.descripcion || "" },
+    piso: { nombre: inv.pisoNombre, direccion: inv.pisoDireccion, descripcion: piso?.descripcion || "", numHabitaciones: piso?.numHabitaciones || 0 },
     habitacion: inv.habitacion,
     inquilinos: grupo.map((r) => ({
       tratamiento: r.tratamiento,
@@ -2956,7 +3009,7 @@ async function vistaLogin() {
       <div class="p-hero-texto">
         <div class="p-eti">Para propietarios que alquilan pisos y habitaciones</div>
         <h1>Del primer mensaje al contrato firmado, sin papeles.</h1>
-        <p class="p-sub">Mandas un enlace a tu inquilino. \xC9l rellena sus datos y los de sus avalistas desde el m\xF3vil, el contrato se genera solo y lo firma cada uno con el dedo. El PDF firmado acaba ordenado en tu Google Drive.</p>
+        <p class="p-sub">Mandas un enlace a tu inquilino. \xC9l rellena sus datos y los de sus avalistas desde el m\xF3vil, el contrato se genera solo y lo firma cada uno con el dedo. El PDF firmado acaba ordenado en tu Google Drive, junto a las facturas de cada piso, listo para la declaraci\xF3n de la renta.</p>
         <div class="p-ctas">
           <button class="btn primario" data-entrar>Solicitar acceso</button>
           <a class="btn secundario" href="${demo}">Ver la demo</a>
