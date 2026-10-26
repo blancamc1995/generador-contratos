@@ -229,3 +229,9 @@ label.campo { display: flex; flex-direction: column; gap: 6px; font-size: 13px; 
 }
 .p-hero > *, .p-dos > *, .p-muestra, .p-tarjeta { min-width: 0; }
 .portada { overflow-x: clip; }
+
+/* Tipo de contrato: botón de información */
+.fila-info { display: flex; align-items: center; gap: 8px; }
+.btn-info { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--burdeos); background: transparent; color: var(--burdeos);
+  font: italic 700 13px/1 Georgia, serif; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+.btn-info:hover { background: var(--burdeos); color: #fff; }

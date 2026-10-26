@@ -1,10 +1,12 @@
 // Plantillas de contrato. Funciones puras: reciben los datos y devuelven
 // una lista de bloques { type, text } que pdf.js convierte en PDF.
 //
-// Plantillas:
-//   - "habitacion"      → habitación en vivienda compartida (estudiantes)
-//   - "piso_entero"     → piso completo para varios inquilinos (estudiantes)
-//   - "larga_duracion"  → vivienda habitual de larga duración (5 años LAU)
+// Plantillas (tipo de contrato · modalidad):
+//   - "temporada_habitacion" → temporada (art. 3 LAU), una habitación
+//   - "temporada_piso"       → temporada (art. 3 LAU), piso entero
+//   - "habitacion"           → vivienda habitual, una habitación en vivienda compartida
+//   - "larga_duracion"       → vivienda habitual, piso entero (prórroga hasta 5 años)
+//   - "piso_entero"          → (versiones anteriores) piso entero para estudiantes
 
 export const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
   "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -67,12 +69,18 @@ function unir(items) {
  *   renta, fianza,
  *   fechaInicio, fechaFin, fechaEntrega,
  *   luz: { opcion: "A"|"B"|"C"|"D", cuota, tope },
- *   agua: { opcion: "incluida"|"cuota", cuota },
+ *   agua: { opcion: "incluida"|"titularidad"|"cuota", cuota, tope },
+ *   wifi: { opcion: "incluida"|"titularidad"|"cuota", cuota, tope },
+ *   motivoTemporada (solo temporada),
  *   conFotos
  * }
  */
+export function esTemporada(pl) { return String(pl || "").startsWith("temporada"); }
+export function porHabitacion(pl) { return pl === "habitacion" || pl === "temporada_habitacion"; }
+
 export function generarContrato(datos) {
-  const bloques = datos.plantilla === "larga_duracion" ? contratoLargaDuracion(datos) : contratoEstudiantes(datos);
+  const bloques = datos.plantilla === "larga_duracion" ? contratoLargaDuracion(datos)
+    : esTemporada(datos.plantilla) ? contratoTemporada(datos) : contratoEstudiantes(datos);
   return datos.cambiosModelo?.length ? aplicarCambios(bloques, datos.cambiosModelo) : bloques;
 }
 
@@ -209,7 +217,91 @@ export function firmantesDe(datos) {
   return out;
 }
 
-// ---------- estudiantes: habitación o piso entero ----------
+// ---------- suministros (luz, agua, internet) ----------
+
+const NOMBRE_SUM = { luz: "energía eléctrica", agua: "agua", wifi: "conexión a internet (wifi)" };
+
+/** Normaliza los suministros: { luz, agua, wifi } con opcion incluida | titularidad | cuota | regularizacion. */
+function suministros(datos) {
+  const l = datos.luz || { opcion: "D" };
+  const luz = { opcion: { A: "titularidad", B: "cuota", C: "regularizacion", D: "incluida" }[l.opcion] || "incluida", cuota: l.cuota, tope: l.tope };
+  const agua = { opcion: datos.plantilla === "larga_duracion" ? "cuota" : "incluida", ...(datos.agua || {}) };
+  const wifi = { opcion: datos.plantilla === "larga_duracion" ? "titularidad" : "incluida", ...(datos.wifi || {}) };
+  return { luz, agua, wifi };
+}
+
+/** Cuotas fijas mensuales que se suman a la renta: [[clave, importe]]. */
+function cuotasFijas(s) {
+  return Object.entries(s).filter(([, x]) => (x.opcion === "cuota" || x.opcion === "regularizacion") && num(x.cuota) > 0)
+    .map(([k, x]) => [k, num(x.cuota)]);
+}
+
+function listaY(xs) { return xs.length > 1 ? xs.slice(0, -1).join(", ") + " y " + xs[xs.length - 1] : xs.join(""); }
+
+/** Párrafo de renta: total y desglose si hay cuotas fijas de suministros. */
+function textoRenta(renta, cuotas, { concepto, ARR, v, solid, plazo }) {
+  if (!cuotas.length) return `La renta mensual ${concepto} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazo}.`;
+  const total = renta + cuotas.reduce((a, [, n]) => a + n, 0);
+  const desglose = cuotas.map(([k, n]) => `${euros(n)} en concepto de cuota fija por el suministro de ${NOMBRE_SUM[k]}`);
+  return `La cantidad mensual total a abonar por ${ARR} asciende a ${euros(total)}, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazo}, y que se desglosa en ${listaY([`${euros(renta)} en concepto de renta ${concepto}`, ...desglose])}, conforme a lo pactado sobre suministros en este contrato.`;
+}
+
+/** Párrafos sobre suministros, según lo pactado en la ficha del piso. */
+function textoSuministros(datos, c, esHab) {
+  const { ARR, v } = c;
+  const s = suministros(datos);
+  const out = [];
+  const de = (op) => Object.keys(s).filter(k => s[k].opcion === op);
+  const incl = de("incluida");
+  const topeLuz = s.luz.opcion === "incluida" ? num(s.luz.tope) : 0;
+  if (incl.length) {
+    const base = `La renta pactada incluye ${incl.length > 1 ? "los suministros" : "el suministro"} de ${listaY(incl.map(k => NOMBRE_SUM[k]))} de la vivienda`;
+    if (topeLuz > 0) {
+      out.push(esHab
+        ? `${base}; en cuanto a la energía eléctrica, siempre que el importe mensual de la factura de electricidad del conjunto de la vivienda no supere los ${euros(topeLuz)}. En caso de superarse dicho límite, el exceso será de cuenta de los arrendatarios de la vivienda, repercutiéndose a partes iguales entre las habitaciones arrendadas, debiendo ${ARR} abonar a EL ARRENDADOR la parte que le corresponda conforme a las facturas que le sean facilitadas.`
+        : `${base}; en cuanto a la energía eléctrica, siempre que el importe mensual de la factura de electricidad no supere los ${euros(topeLuz)}. En caso de superarse dicho límite, el exceso será de cuenta de ${ARR}, que ${v("deberá", "deberán")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`);
+    } else {
+      out.push(`${base}${incl.length === 3 ? `, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos` : ""}.`);
+    }
+  }
+  const tit = de("titularidad");
+  if (tit.length) {
+    out.push(`${tit.length > 1 ? "Serán" : "Será"} de cuenta de ${ARR} ${tit.length > 1 ? "los suministros" : "el suministro"} de ${listaY(tit.map(k => NOMBRE_SUM[k]))}. A tal efecto, ${ARR} ${v("deberá", "deberán")}, en el plazo más breve posible desde la entrada en vigor del presente contrato, tramitar a su nombre y con cargo a su cuenta bancaria el cambio de titularidad o, en su caso, la contratación de ${tit.length > 1 ? "dichos suministros" : "dicho suministro"}, haciéndose cargo a partir de entonces de su alta y abono${c.varios || esHab ? " en la proporción que corresponda" : ""}.`);
+  }
+  for (const k of de("cuota")) {
+    const x = s[k];
+    const tope = num(x.tope);
+    out.push(`En cuanto al suministro de ${NOMBRE_SUM[k]}, ${ARR} ${v("abonará", "abonarán")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${euros(x.cuota)} mensuales. ${tope > 0
+      ? `Dicha cantidad cubre el consumo hasta un máximo de ${euros(tope)} mensuales; el eventual exceso sobre dicho importe será de cuenta de ${ARR}, que ${v("deberá", "deberán")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`
+      : "Dicha cantidad tiene el carácter de tanto alzado y no será objeto de regularización."}`);
+  }
+  if (s.luz.opcion === "regularizacion") {
+    const finTxt = datos.fechaFin ? `el día ${fechaLarga(datos.fechaFin).replace(/ de \d{4}$/, "")}` : "a la finalización del contrato";
+    out.push(esHab
+      ? `En cuanto al suministro de energía eléctrica, ${ARR} abonará a EL ARRENDADOR, junto con la renta, una cantidad fija de ${euros(s.luz.cuota)} mensuales en concepto de consumo eléctrico. A la finalización del contrato, ${finTxt}, se procederá a una regularización final: el importe real de las facturas de electricidad de la vivienda correspondientes al periodo del contrato se dividirá a partes iguales entre el número de habitaciones arrendadas durante dicho periodo, resultando así la parte proporcional que corresponde a la habitación objeto de este contrato. Si la cantidad abonada por ${ARR} resultase superior a dicha parte proporcional, EL ARRENDADOR le devolverá el exceso; si, por el contrario, resultase inferior, ${ARR} deberá abonar a EL ARRENDADOR la diferencia.`
+      : `En cuanto al suministro de energía eléctrica, ${ARR} ${v("abonará", "abonarán")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${euros(s.luz.cuota)} mensuales en concepto de consumo eléctrico. A la finalización del contrato, ${finTxt}, se procederá a una regularización final, comparando el total abonado por este concepto con el importe real de las facturas de electricidad del periodo del contrato: si lo abonado resultase superior, EL ARRENDADOR devolverá el exceso a ${ARR}; si resultase inferior, ${ARR} ${v("deberá", "deberán")} abonar la diferencia.${c.varios ? " Dicha diferencia, a favor o en contra, se distribuirá a partes iguales entre todos los arrendatarios firmantes." : ""}`);
+  }
+  return out;
+}
+
+/** Gastos del inmueble (comunidad, IBI, basura): quién los paga. art20 = citar el art. 20.1 LAU. */
+function textoGastosInmueble(datos, c, art20) {
+  const { ARR, v } = c;
+  const gastos = datos.gastos || {};
+  const NOMBRES_G = { comunidad: "los gastos de la comunidad de propietarios", ibi: "el Impuesto sobre Bienes Inmuebles", basura: "la tasa de recogida de basuras" };
+  const delInquilino = Object.keys(NOMBRES_G).filter(k => gastos[k]?.quien === "arrendatario");
+  const delPropietario = Object.keys(NOMBRES_G).filter(k => !delInquilino.includes(k));
+  const lista = (ks) => listaY(ks.map(k => NOMBRES_G[k]));
+  const out = [];
+  if (delPropietario.length === 3) out.push("Serán de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y demás tributos que graven la propiedad.");
+  else if (delPropietario.length) out.push(`Serán de cuenta de EL ARRENDADOR ${delPropietario.map(k => NOMBRES_G[k]).join(", ")} y demás tributos que graven la propiedad.`);
+  if (delInquilino.length) {
+    out.push(`${art20 ? "De conformidad con el artículo 20.1 de la LAU, las" : "Las"} partes pactan que serán de cuenta de ${ARR} ${lista(delInquilino)}, cuyo importe anual a la fecha de este contrato asciende a: ${delInquilino.map(k => `${NOMBRES_G[k].replace(/^(los|el|la) /, "")}, ${euros(gastos[k].importe)}`).join("; ")}. ${ARR} ${v("abonará", "abonarán")} dichas cantidades a EL ARRENDADOR junto con la renta, en la proporción mensual correspondiente, previa justificación de su importe.`);
+  }
+  return out;
+}
+
+// ---------- vivienda habitual: habitación (o piso entero de estudiantes, versiones anteriores) ----------
 
 function contratoEstudiantes(datos) {
   const esHab = datos.plantilla === "habitacion";
@@ -221,9 +313,7 @@ function contratoEstudiantes(datos) {
   const dir = sinPunto(datos.piso.direccion);
   const renta = num(datos.renta);
   const fianza = datos.fianza != null && datos.fianza !== "" ? num(datos.fianza) : renta;
-  const luz = datos.luz || { opcion: "D" };
-  const cuotaLuz = num(luz.cuota);
-  const conCuota = (luz.opcion === "B" || luz.opcion === "C") && cuotaLuz > 0;
+  const cuotas = cuotasFijas(suministros(datos));
 
   add("title", "CONTRATO DE ARRENDAMIENTO DE VIVIENDA PARA USO DE VIVIENDA HABITUAL Y PERMANENTE");
   if (esHab) add("subtitle", "(arrendamiento de habitación en vivienda compartida)");
@@ -255,16 +345,11 @@ function contratoEstudiantes(datos) {
   add("p", `En caso de no producirse prórroga legal, ${ARR} ${v("deberá", "deberán")} dejar libre, vacua, expedita y a disposición de EL ARRENDADOR ${objetoRef}, junto con sus llaves y enseres.`);
 
   add("subheading", c.siguiente("Renta y forma de pago."));
-  const conceptoRenta = esHab ? "renta por la habitación arrendada" : "renta por la vivienda arrendada";
   const solid = esHab ? "" : (c.varios ? "solidariamente, " : "");
-  if (conCuota) {
-    add("p", `La renta mensual total a abonar por ${ARR} asciende a ${euros(renta + cuotaLuz)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}, y que se desglosa en ${euros(renta)} en concepto de ${conceptoRenta} y ${euros(cuotaLuz)} en concepto de cuota fija por el suministro eléctrico, conforme a lo dispuesto en el párrafo siguiente.`);
-  } else {
-    add("p", `La renta mensual ${esHab ? "de la habitación arrendada" : "de la vivienda"} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}.`);
-  }
+  add("p", textoRenta(renta, cuotas, { concepto: esHab ? "de la habitación arrendada" : "de la vivienda", ARR, v, solid, plazo: plazoPago(datos) }));
   const concepto = `Alquiler ${datos.piso.nombre} + ${c.inquilinos.map(i => i.nombre).join(" y ")}`;
   add("p", `El pago se realizará mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, debiendo hacerse constar en el concepto de la transferencia: "${concepto}".`);
-  add("p", textoLuzEstudiantes(luz, c, esHab, datos.fechaFin));
+  textoSuministros(datos, c, esHab).forEach(t => add("p", t));
   add("p", textoActualizacion(c));
 
   add("subheading", c.siguiente("Fianza."));
@@ -290,7 +375,8 @@ function contratoEstudiantes(datos) {
   if (condiciones(datos).limpieza) add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que existían al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero sí un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podrá descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
 
   add("subheading", c.siguiente("Gastos."));
-  add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y demás tributos que graven la propiedad) serán de cuenta de EL ARRENDADOR. Los gastos por suministros se regirán por lo dispuesto en la cláusula tercera.");
+  if (esHab) add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y demás tributos que graven la propiedad) serán de cuenta de EL ARRENDADOR. Los suministros se rigen por lo dispuesto en la cláusula de renta y forma de pago.");
+  else { textoGastosInmueble(datos, c, true).forEach(t => add("p", t)); add("p", "Los suministros se rigen por lo dispuesto en la cláusula de renta y forma de pago."); }
 
   add("subheading", c.siguiente("Resolución."));
   add("p", "Serán causa de resolución del presente contrato, además de las previstas en el artículo 27 de la LAU, el impago de la renta o de cualquier cantidad asimilada a la misma, el incumplimiento grave de las obligaciones de conservación y buen uso, y la cesión o el subarriendo no consentidos por EL ARRENDADOR.");
@@ -306,28 +392,97 @@ function contratoEstudiantes(datos) {
   return L;
 }
 
-function textoLuzEstudiantes(luz, c, esHab, fechaFin) {
+// ---------- temporada (art. 3 LAU): habitación o piso entero ----------
+
+function contratoTemporada(datos) {
+  const esHab = datos.plantilla === "temporada_habitacion";
+  const c = contexto(datos);
   const { ARR, v } = c;
-  const cuota = euros(luz.cuota);
-  const finTxt = fechaFin ? `el día ${fechaLarga(fechaFin).replace(/ de \d{4}$/, "")}` : "a la finalización del contrato";
-  switch (luz.opcion) {
-    case "A":
-      return `La renta pactada incluye los suministros de agua y conexión a internet (wifi) de la vivienda. El suministro de energía eléctrica se encuentra actualmente contratado a nombre de EL ARRENDADOR. ${ARR} ${v("deberá", "deberán")}, en el plazo más breve posible desde la entrada en vigor del presente contrato, tramitar el cambio de titularidad de dicho suministro a su nombre y con cargo a su cuenta bancaria, haciéndose cargo a partir de entonces de su contratación, alta y abono${c.varios ? " en la proporción que corresponda" : ""}.`;
-    case "B":
-      return `La renta pactada incluye los suministros de agua y conexión a internet (wifi) de la vivienda. En cuanto al suministro de energía eléctrica, ${ARR} ${v("abonará", "abonarán")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${cuota} mensuales en concepto de consumo eléctrico. Dicha cantidad cubre el consumo hasta un máximo de ${euros(luz.tope)} mensuales; el eventual exceso sobre dicho importe será de cuenta de ${ARR}, que ${v("deberá", "deberán")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`;
-    case "C":
-      if (esHab) {
-        return `La renta pactada incluye los suministros de agua y conexión a internet (wifi) de la vivienda. En cuanto al suministro de energía eléctrica, ${ARR} abonará a EL ARRENDADOR, junto con la renta, una cantidad fija de ${cuota} mensuales en concepto de consumo eléctrico. A la finalización del contrato, ${finTxt}, se procederá a una regularización final: el importe real de las facturas de electricidad de la vivienda correspondientes al periodo del contrato se dividirá a partes iguales entre el número de habitaciones arrendadas durante dicho periodo, resultando así la parte proporcional que corresponde a la habitación objeto de este contrato. Si la cantidad abonada por ${ARR} resultase superior a dicha parte proporcional, EL ARRENDADOR le devolverá el exceso; si, por el contrario, resultase inferior, ${ARR} deberá abonar a EL ARRENDADOR la diferencia.`;
-      }
-      return `La renta pactada incluye los suministros de agua y conexión a internet (wifi) de la vivienda. En cuanto al suministro de energía eléctrica, ${ARR} ${v("abonará", "abonarán")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${cuota} mensuales en concepto de consumo eléctrico. A la finalización del contrato, ${finTxt}, se procederá a una regularización final, comparando el total abonado por este concepto con el importe real de las facturas de electricidad del periodo del contrato: si lo abonado resultase superior, EL ARRENDADOR devolverá el exceso a ${ARR}; si resultase inferior, ${ARR} ${v("deberá", "deberán")} abonar la diferencia.${c.varios ? " Dicha diferencia, a favor o en contra, se distribuirá a partes iguales entre todos los arrendatarios firmantes." : ""}`;
-    default: // D: todo incluido, con o sin tope
-      if (num(luz.tope) > 0) {
-        return esHab
-          ? `La renta pactada incluye los suministros de agua, conexión a internet (wifi) y energía eléctrica de la vivienda, siempre que el importe mensual de la factura de electricidad del conjunto de la vivienda no supere los ${euros(luz.tope)}. En caso de superarse dicho límite, el exceso será de cuenta de los arrendatarios de la vivienda, repercutiéndose a partes iguales entre las habitaciones arrendadas, debiendo ${ARR} abonar a EL ARRENDADOR la parte que le corresponda conforme a las facturas que le sean facilitadas.`
-          : `La renta pactada incluye los suministros de agua, conexión a internet (wifi) y energía eléctrica de la vivienda, siempre que el importe mensual de la factura de electricidad no supere los ${euros(luz.tope)}. En caso de superarse dicho límite, el exceso será de cuenta de ${ARR}, que ${v("deberá", "deberán")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`;
-      }
-      return `La renta pactada incluye los suministros de agua, conexión a internet (wifi) y energía eléctrica de la vivienda, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos.`;
+  const L = [];
+  const add = (type, text) => L.push({ type, text });
+  const objetoRef = esHab ? "la habitación arrendada" : "la vivienda arrendada";
+  const dir = sinPunto(datos.piso.direccion);
+  const renta = num(datos.renta);
+  const fianza = datos.fianza != null && datos.fianza !== "" ? num(datos.fianza) : renta * 2;
+  const cuotas = cuotasFijas(suministros(datos));
+  const motivo = sinPunto(datos.motivoTemporada) || HUECO;
+
+  add("title", "CONTRATO DE ARRENDAMIENTO DE TEMPORADA");
+  add("subtitle", esHab ? "(arrendamiento de habitación en vivienda compartida para uso distinto del de vivienda habitual)" : "(arrendamiento para uso distinto del de vivienda habitual)");
+  add("p", `En ${datos.ciudadFirma || HUECO}, a ${fechaLarga(datos.fechaFirma)}.`);
+
+  add("heading", "REUNIDOS");
+  bloquesReunidos(datos, add, c, { conDomicilioTitulo: "habitual y permanente" });
+
+  add("heading", "EXPONEN");
+  const nH = parseInt(datos.piso.numHabitaciones, 10) || 0;
+  const descr = sinPunto(datos.piso.descripcion || "") || (nH ? `compuesta por ${nH} ${nH === 1 ? "dormitorio" : "dormitorios"}` : "");
+  add("p", `I. Que EL ARRENDADOR es propietario de la vivienda sita en ${dir}${descr ? `, ${descr}` : ""}, debidamente amueblada y en condiciones de habitabilidad.`);
+  add("p", `II. Que ${ARR} ${v("necesita", "necesitan")} ocupar temporalmente ${esHab ? "una habitación de dicha vivienda" : "dicha vivienda"} por el siguiente motivo: ${motivo}, manteniendo ${c.varios ? "cada uno de ellos" : ""} su vivienda habitual y permanente en el domicilio indicado en el encabezamiento.`.replace("manteniendo  su", "manteniendo su"));
+  add("p", `III. Que, en atención a dicha necesidad temporal, las partes acuerdan celebrar un contrato de arrendamiento de temporada, para uso distinto del de vivienda, conforme al artículo 3.2 de la ${LAU} (en adelante, "LAU"), que se regirá por la voluntad de las partes, en su defecto por lo dispuesto en el Título III de la LAU y, supletoriamente, por el Código Civil, de acuerdo con el artículo 4.3 de la LAU, y en particular por las siguientes`);
+
+  add("heading", "CLÁUSULAS");
+
+  add("subheading", c.siguiente("Objeto y destino."));
+  if (esHab) {
+    add("p", `EL ARRENDADOR cede en arrendamiento a ${ARR}, que lo recibe de conformidad, la habitación identificada como «${datos.habitacion || HUECO}» dentro de la vivienda sita en ${dir}, amueblada, junto con el derecho de uso compartido, en condiciones de igualdad con los restantes ocupantes de la vivienda, de sus zonas comunes (cocina, salón, baños, terrazas y demás estancias no destinadas a uso privativo de un ocupante).`);
+  } else {
+    add("p", `EL ARRENDADOR cede en arrendamiento a ${ARR}, que ${v("lo recibe", "lo reciben")} de conformidad, la totalidad de la vivienda sita en ${dir}, junto con el mobiliario y enseres que la integran.`);
   }
+  add("p", `El arrendamiento se destina exclusivamente a satisfacer la necesidad temporal descrita en el expositivo II. ${ARR} ${v("declara", "declaran")} que ${objetoRef} no constituirá su vivienda habitual y permanente. El cambio de dicho destino sin autorización escrita de EL ARRENDADOR será causa de resolución del contrato.`);
+
+  add("subheading", c.siguiente("Duración."));
+  add("p", `El presente contrato tendrá una duración determinada, desde el día ${fechaLarga(datos.fechaInicio)} hasta el día ${fechaLarga(datos.fechaFin)}.`);
+  add("p", `Llegada la fecha de vencimiento, el contrato quedará extinguido de pleno derecho, sin necesidad de requerimiento previo y sin que proceda prórroga alguna, excluyendo las partes expresamente la tácita reconducción prevista en el artículo 1566 del Código Civil. En dicha fecha, ${ARR} ${v("deberá", "deberán")} dejar libre, vacua, expedita y a disposición de EL ARRENDADOR ${objetoRef}, junto con sus llaves y enseres. Cualquier ampliación del plazo deberá pactarse por escrito.`);
+
+  add("subheading", c.siguiente("Renta y forma de pago."));
+  add("p", textoRenta(renta, cuotas, { concepto: esHab ? "de la habitación arrendada" : "de la vivienda", ARR, v, solid: !esHab && c.varios ? "solidariamente, " : "", plazo: plazoPago(datos) }));
+  add("p", `El pago se realizará mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, debiendo hacerse constar en el concepto de la transferencia: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map(i => i.nombre).join(" y ")}". El justificante de la transferencia servirá de recibo, salvo prueba en contrario.`);
+  add("p", "Si la duración del contrato fuese superior a un año, la renta se actualizará en cada anualidad conforme a la variación anual del Índice de Precios de Consumo (IPC) publicado por el Instituto Nacional de Estadística, con sujeción en todo caso a los límites que establezca la normativa vigente.");
+
+  add("subheading", c.siguiente("Suministros."));
+  textoSuministros(datos, c, esHab).forEach(t => add("p", t));
+
+  add("subheading", c.siguiente("Fianza."));
+  add("p", `En el momento de la firma del presente contrato, ${ARR} ${v("hace", "hacen")} entrega a EL ARRENDADOR de la cantidad de ${euros(fianza)} en concepto de fianza legal, conforme al artículo 36.1 de la LAU, que para los arrendamientos para uso distinto del de vivienda la fija en dos mensualidades de renta. La fianza será devuelta a ${ARR} en el plazo de un mes desde la entrega de llaves, previa comprobación del buen estado de ${objetoRef} y enseres, y una vez deducidas, en su caso, las cantidades que correspondan en concepto de desperfectos, suministros pendientes u otras cantidades adeudadas. La fianza no podrá aplicarse al pago de la última mensualidad de renta.`);
+  bloquesGarantiaYDeposito(add, datos, ARR, v, renta);
+
+  if (c.avales.length) {
+    add("subheading", c.siguiente(c.avales.length > 1 ? "Fiadores solidarios." : "Fiador solidario."));
+    bloqueFiadores(add, c, objetoRef, esHab);
+  }
+  if (!esHab && c.varios) {
+    add("p", `${ARR} firmantes del presente contrato responden solidariamente entre sí frente a EL ARRENDADOR del cumplimiento íntegro de las obligaciones derivadas de este contrato, y en particular del pago de la totalidad de la renta pactada, con independencia de la parte proporcional que individualmente les corresponda satisfacer.`);
+  }
+  if (esHab) {
+    add("p", `La responsabilidad de ${ARR}${c.avales.length ? ` y de su${c.avales.length > 1 ? "s fiadores" : " fiador"}` : ""} se circunscribe exclusivamente a las obligaciones derivadas del arrendamiento de su propia habitación, sin extenderse a las que pudieran corresponder a los restantes ocupantes de la vivienda, quienes mantienen, en su caso, contratos independientes con EL ARRENDADOR.`);
+  }
+
+  add("subheading", c.siguiente("Conservación, uso y obras."));
+  add("p", `${ARR} se ${v("obliga", "obligan")} a conservar ${esHab ? "la habitación y las zonas comunes" : "la vivienda"}, su mobiliario y sus instalaciones en buen estado, sin desarrollar en ${esHab ? "ellas" : "ella"} actividades molestas, insalubres, nocivas, peligrosas o ilícitas, ni realizar obras sin consentimiento escrito de EL ARRENDADOR, ni ceder el contrato o subarrendar, total o parcialmente, ${objetoRef}. Las pequeñas reparaciones que exija el desgaste por el uso ordinario serán de cuenta de ${ARR}.`);
+  const objLimpieza = esHab
+    ? "la habitación arrendada, así como las zonas comunes de la vivienda (cocina, salón, baños y demás estancias de uso compartido),"
+    : "la vivienda arrendada";
+  if (condiciones(datos).limpieza) add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que existían al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero sí un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podrá descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
+  if (datos.conFotos) add("p", `Como anexo a este contrato se adjuntan fotografías del estado de ${esHab ? "la habitación y la vivienda" : "la vivienda"} a la fecha de entrega.`);
+
+  add("subheading", c.siguiente("Gastos."));
+  if (esHab) add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y demás tributos que graven la propiedad) serán de cuenta de EL ARRENDADOR.");
+  else textoGastosInmueble(datos, c, false).forEach(t => add("p", t));
+
+  add("subheading", c.siguiente("Resolución."));
+  add("p", "Serán causa de resolución del presente contrato, además de las previstas en el artículo 35 de la LAU y en el artículo 1124 del Código Civil, el impago de la renta o de cualquier cantidad asimilada a la misma, el incumplimiento grave de las obligaciones de conservación y buen uso, el cambio de destino y la cesión o el subarriendo no consentidos por EL ARRENDADOR.");
+
+  add("subheading", c.siguiente("Notificaciones."));
+  add("p", `Las notificaciones a ${ARR} se practicarán en el domicilio habitual indicado en el encabezamiento o en ${objetoRef}, y las dirigidas a EL ARRENDADOR, en el domicilio indicado en el encabezamiento. Serán igualmente válidas las comunicaciones por correo electrónico o mensajería siempre que quede constancia de su recepción.`);
+
+  add("subheading", c.siguiente("Normativa aplicable y jurisdicción."));
+  add("p", "El presente contrato se rige por la voluntad de las partes expresada en sus cláusulas, en su defecto por el Título III de la LAU y, supletoriamente, por el Código Civil. Para cualquier controversia derivada del mismo serán competentes los Juzgados y Tribunales del lugar en que radica la vivienda.");
+
+  bloqueClausulasExtra(add, datos, c);
+  bloqueFirmas(add, datos, c);
+  if (datos.conFotos) add("annex", "ANEXO I. ESTADO ACTUAL DE LA VIVIENDA");
+  return L;
 }
 
 // ---------- larga duración ----------
@@ -340,8 +495,7 @@ function contratoLargaDuracion(datos) {
   const dir = sinPunto(datos.piso.direccion);
   const renta = num(datos.renta);
   const fianza = datos.fianza != null && datos.fianza !== "" ? num(datos.fianza) : renta;
-  const agua = datos.agua || { opcion: "cuota", cuota: 0 };
-  const cuotaAgua = agua.opcion === "cuota" ? num(agua.cuota) : 0;
+  const cuotas = cuotasFijas(suministros(datos));
   const entrega = datos.fechaEntrega || datos.fechaInicio;
   const objetoRef = "la vivienda arrendada";
 
@@ -369,12 +523,8 @@ function contratoLargaDuracion(datos) {
   add("p", `No obstante lo anterior, ${ARR} ${v("podrá", "podrán")} desistir del contrato una vez transcurridos al menos seis meses desde su entrada en vigor, siempre que lo ${v("comunique", "comuniquen")} a EL ARRENDADOR con una antelación mínima de treinta días, conforme al artículo 11 de la LAU.`);
 
   add("subheading", c.siguiente("Renta y forma de pago."));
-  if (cuotaAgua > 0) {
-    add("p", `La renta mensual se fija en ${euros(renta)}, a la que se añade una cantidad fija de ${euros(cuotaAgua)} mensuales en concepto de suministro de agua, conforme a la cláusula de gastos, lo que hace un total de ${euros(renta + cuotaAgua)} mensuales.`);
-  } else {
-    add("p", `La renta mensual se fija en ${euros(renta)}.`);
-  }
-  add("p", `${ARR} se ${v("obliga", "obligan")} a abonar dicha cantidad ${c.varios ? "solidariamente, " : ""}por adelantado ${plazoPago(datos)}, mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map(i => i.nombre).join(" y ")}". El justificante de la transferencia acreditará el pago y servirá de recibo, salvo prueba en contrario.`);
+  add("p", textoRenta(renta, cuotas, { concepto: "de la vivienda", ARR, v, solid: c.varios ? "solidariamente, " : "", plazo: plazoPago(datos) }));
+  add("p", `El pago se realizará mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map(i => i.nombre).join(" y ")}". El justificante de la transferencia acreditará el pago y servirá de recibo, salvo prueba en contrario.`);
   add("p", "Las cantidades no satisfechas en plazo devengarán el interés legal del dinero desde la fecha en que debieron abonarse.");
 
   add("subheading", c.siguiente("Actualización de la renta."));
@@ -392,22 +542,8 @@ function contratoLargaDuracion(datos) {
   }
 
   add("subheading", c.siguiente("Gastos y suministros."));
-  const G = datos.gastos || {};
-  const NOMBRES_G = { comunidad: "los gastos de la comunidad de propietarios", ibi: "el Impuesto sobre Bienes Inmuebles", basura: "la tasa de recogida de basuras" };
-  const delInquilino = Object.keys(NOMBRES_G).filter(k => G[k]?.quien === "arrendatario");
-  const delPropietario = Object.keys(NOMBRES_G).filter(k => !delInquilino.includes(k));
-  const lista = (ks) => ks.map(k => NOMBRES_G[k]).join(ks.length > 1 ? ", " : "").replace(/, ([^,]*)$/, " y $1");
-  if (delPropietario.length === 3) add("p", "Serán de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y demás tributos que graven la propiedad.");
-  else if (delPropietario.length) add("p", `Serán de cuenta de EL ARRENDADOR ${lista(delPropietario)} y demás tributos que graven la propiedad.`);
-  if (delInquilino.length) {
-    add("p", `De conformidad con el artículo 20.1 de la LAU, las partes pactan que serán de cuenta de ${ARR} ${lista(delInquilino)}, cuyo importe anual a la fecha de este contrato asciende a: ${delInquilino.map(k => `${NOMBRES_G[k].replace(/^(los|el|la) /, "")}, ${euros(G[k].importe)}`).join("; ")}. ${ARR} ${v("abonará", "abonarán")} dichas cantidades a EL ARRENDADOR junto con la renta, en la proporción mensual correspondiente, previa justificación de su importe.`);
-  }
-  add("p", `Serán de cuenta de ${ARR} los gastos por consumo de energía eléctrica. A tal efecto, ${ARR} ${v("deberá", "deberán")}, en el plazo más breve posible desde la entrada en vigor del presente contrato, tramitar el cambio de titularidad de dicho suministro a su nombre y con cargo a su cuenta bancaria.`);
-  if (cuotaAgua > 0) {
-    add("p", `En cuanto al suministro de agua, ${ARR} ${v("abonará", "abonarán")} a EL ARRENDADOR la cantidad fija de ${euros(cuotaAgua)} mensuales indicada en la cláusula de renta.`);
-  } else {
-    add("p", "El suministro de agua está incluido en la renta pactada.");
-  }
+  textoGastosInmueble(datos, c, true).forEach(t => add("p", t));
+  textoSuministros(datos, c, false).forEach(t => add("p", t));
   add("p", `Cualquier otro servicio o suministro susceptible de individualizarse mediante contador será igualmente de cuenta de ${ARR}.`);
 
   add("subheading", c.siguiente("Conservación, obras y subarriendo."));

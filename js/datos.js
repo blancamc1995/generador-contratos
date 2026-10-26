@@ -35,7 +35,7 @@ export const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
 // ================= modo demostración =================
 
 function crearDemo() {
-  const CLAVE = "contratos-demo-v5";
+  const CLAVE = "contratos-demo-v6";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -135,18 +135,19 @@ function semilla() {
     carpetaDriveId: "demo-rentas", carpetaDriveNombre: "Rentas (demo)",
   };
   m["pisos/centro"] = { nombre: "Piso Centro", direccion: "Calle de los Olivos, 12, 2º A, 46002 Valencia", ciudad: "Valencia",
-    plantilla: "habitacion", habitaciones: ["1", "2", "3", "4"], renta: "320", luz: { opcion: "C", cuota: "25", tope: "" }, agua: { opcion: "incluida" } };
+    plantilla: "temporada_habitacion", numHabitaciones: 4, habitaciones: ["1", "2", "3", "4"], renta: "320", luz: { opcion: "B", cuota: "25", tope: "40" }, agua: { opcion: "incluida" }, wifi: { opcion: "incluida" } };
   m["pisos/universidad"] = { nombre: "Piso Universidad", direccion: "Avenida del Campus, 8, 3º B, 46010 Valencia", ciudad: "Valencia",
-    plantilla: "habitacion", habitaciones: ["1", "2", "3", "4"], renta: "290", luz: { opcion: "D", cuota: "", tope: "180" }, agua: { opcion: "incluida" } };
+    plantilla: "habitacion", numHabitaciones: 4, habitaciones: ["1", "2", "3", "4"], renta: "290", luz: { opcion: "D", cuota: "", tope: "180" }, agua: { opcion: "incluida" }, wifi: { opcion: "incluida" } };
   m["pisos/atico"] = { nombre: "Ático Jardines", direccion: "Plaza de los Jardines, 3, 5º, 46004 Valencia", ciudad: "Valencia",
-    plantilla: "piso_entero", habitaciones: [], renta: "900", luz: { opcion: "A" }, agua: { opcion: "incluida" } };
+    plantilla: "temporada_piso", numHabitaciones: 3, habitaciones: ["1", "2", "3"], renta: "900", luz: { opcion: "A" }, agua: { opcion: "cuota", cuota: "15", tope: "25" }, wifi: { opcion: "titularidad" } };
   m["pisos/rio"] = { nombre: "Casa del Río", direccion: "Calle del Río, 21, 50003 Zaragoza", ciudad: "Zaragoza",
     plantilla: "larga_duracion", habitaciones: [], renta: "680", descripcion: "con dos dormitorios, cocina, salón, baño y terraza",
-    luz: { opcion: "A" }, agua: { opcion: "cuota", cuota: "10" } };
+    luz: { opcion: "A" }, agua: { opcion: "cuota", cuota: "10" }, wifi: { opcion: "titularidad" },
+    gastos: { comunidad: { quien: "arrendador" }, ibi: { quien: "arrendador" }, basura: { quien: "arrendatario", importe: "90" } } };
   m["invitaciones/demoInvitacion1"] = {
     pisoId: "universidad", pisoNombre: "Piso Universidad", pisoDireccion: m["pisos/universidad"].direccion, ciudad: "Valencia",
     plantilla: "habitacion", habitacion: "2", plazas: 1, renta: "290", fianza: "", fechaInicio: "2026-09-01", fechaFin: "2027-07-31",
-    fechaEntrega: "", luz: { opcion: "D", tope: "200" }, agua: { opcion: "incluida" }, estado: "abierta", creada: ts(2), creadaPor: "demo",
+    fechaEntrega: "", luz: { opcion: "D", tope: "180" }, agua: { opcion: "incluida" }, wifi: { opcion: "incluida" }, estado: "abierta", creada: ts(2), creadaPor: "demo",
   };
   m["invitaciones/demoInvitacion1/respuestas/r1"] = {
     tratamiento: "Dña.", nombre: "Lucía Ejemplo Prueba", tipoDoc: "DNI", numDoc: "12345678Z",

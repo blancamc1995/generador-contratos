@@ -94,7 +94,7 @@ var {
   arrayUnion
 } = api;
 function crearDemo() {
-  const CLAVE = "contratos-demo-v5";
+  const CLAVE = "contratos-demo-v6";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -221,31 +221,37 @@ function semilla() {
     nombre: "Piso Centro",
     direccion: "Calle de los Olivos, 12, 2\xBA A, 46002 Valencia",
     ciudad: "Valencia",
-    plantilla: "habitacion",
+    plantilla: "temporada_habitacion",
+    numHabitaciones: 4,
     habitaciones: ["1", "2", "3", "4"],
     renta: "320",
-    luz: { opcion: "C", cuota: "25", tope: "" },
-    agua: { opcion: "incluida" }
+    luz: { opcion: "B", cuota: "25", tope: "40" },
+    agua: { opcion: "incluida" },
+    wifi: { opcion: "incluida" }
   };
   m["pisos/universidad"] = {
     nombre: "Piso Universidad",
     direccion: "Avenida del Campus, 8, 3\xBA B, 46010 Valencia",
     ciudad: "Valencia",
     plantilla: "habitacion",
+    numHabitaciones: 4,
     habitaciones: ["1", "2", "3", "4"],
     renta: "290",
     luz: { opcion: "D", cuota: "", tope: "180" },
-    agua: { opcion: "incluida" }
+    agua: { opcion: "incluida" },
+    wifi: { opcion: "incluida" }
   };
   m["pisos/atico"] = {
     nombre: "\xC1tico Jardines",
     direccion: "Plaza de los Jardines, 3, 5\xBA, 46004 Valencia",
     ciudad: "Valencia",
-    plantilla: "piso_entero",
-    habitaciones: [],
+    plantilla: "temporada_piso",
+    numHabitaciones: 3,
+    habitaciones: ["1", "2", "3"],
     renta: "900",
     luz: { opcion: "A" },
-    agua: { opcion: "incluida" }
+    agua: { opcion: "cuota", cuota: "15", tope: "25" },
+    wifi: { opcion: "titularidad" }
   };
   m["pisos/rio"] = {
     nombre: "Casa del R\xEDo",
@@ -256,7 +262,9 @@ function semilla() {
     renta: "680",
     descripcion: "con dos dormitorios, cocina, sal\xF3n, ba\xF1o y terraza",
     luz: { opcion: "A" },
-    agua: { opcion: "cuota", cuota: "10" }
+    agua: { opcion: "cuota", cuota: "10" },
+    wifi: { opcion: "titularidad" },
+    gastos: { comunidad: { quien: "arrendador" }, ibi: { quien: "arrendador" }, basura: { quien: "arrendatario", importe: "90" } }
   };
   m["invitaciones/demoInvitacion1"] = {
     pisoId: "universidad",
@@ -271,8 +279,9 @@ function semilla() {
     fechaInicio: "2026-09-01",
     fechaFin: "2027-07-31",
     fechaEntrega: "",
-    luz: { opcion: "D", tope: "200" },
+    luz: { opcion: "D", tope: "180" },
     agua: { opcion: "incluida" },
+    wifi: { opcion: "incluida" },
     estado: "abierta",
     creada: ts(2),
     creadaPor: "demo"
@@ -373,8 +382,14 @@ function unir(items) {
   if (items.length <= 1) return items.join("");
   return items.slice(0, -1).join("; ") + "; y de otra, " + items[items.length - 1];
 }
+function esTemporada(pl) {
+  return String(pl || "").startsWith("temporada");
+}
+function porHabitacion(pl) {
+  return pl === "habitacion" || pl === "temporada_habitacion";
+}
 function generarContrato(datos) {
-  const bloques = datos.plantilla === "larga_duracion" ? contratoLargaDuracion(datos) : contratoEstudiantes(datos);
+  const bloques = datos.plantilla === "larga_duracion" ? contratoLargaDuracion(datos) : esTemporada(datos.plantilla) ? contratoTemporada(datos) : contratoEstudiantes(datos);
   return datos.cambiosModelo?.length ? aplicarCambios(bloques, datos.cambiosModelo) : bloques;
 }
 var RE_CLAUSULA = new RegExp(`^(${ORDINALES.join("|")}|NUEVA)\\.\\s*`);
@@ -504,6 +519,71 @@ function firmantesDe(datos) {
   (datos.inquilinos || []).forEach((p2) => (p2.avales || []).forEach((a) => out.push({ fid: `fia${k++}`, rol: "fiador", nombre: a.nombre, tipoDoc: a.tipoDoc, numDoc: a.numDoc, avalaA: p2.nombre })));
   return out;
 }
+var NOMBRE_SUM = { luz: "energ\xEDa el\xE9ctrica", agua: "agua", wifi: "conexi\xF3n a internet (wifi)" };
+function suministros(datos) {
+  const l = datos.luz || { opcion: "D" };
+  const luz = { opcion: { A: "titularidad", B: "cuota", C: "regularizacion", D: "incluida" }[l.opcion] || "incluida", cuota: l.cuota, tope: l.tope };
+  const agua = { opcion: datos.plantilla === "larga_duracion" ? "cuota" : "incluida", ...datos.agua || {} };
+  const wifi = { opcion: datos.plantilla === "larga_duracion" ? "titularidad" : "incluida", ...datos.wifi || {} };
+  return { luz, agua, wifi };
+}
+function cuotasFijas(s) {
+  return Object.entries(s).filter(([, x]) => (x.opcion === "cuota" || x.opcion === "regularizacion") && num(x.cuota) > 0).map(([k, x]) => [k, num(x.cuota)]);
+}
+function listaY(xs) {
+  return xs.length > 1 ? xs.slice(0, -1).join(", ") + " y " + xs[xs.length - 1] : xs.join("");
+}
+function textoRenta(renta, cuotas, { concepto, ARR, v, solid, plazo }) {
+  if (!cuotas.length) return `La renta mensual ${concepto} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazo}.`;
+  const total = renta + cuotas.reduce((a, [, n]) => a + n, 0);
+  const desglose = cuotas.map(([k, n]) => `${euros(n)} en concepto de cuota fija por el suministro de ${NOMBRE_SUM[k]}`);
+  return `La cantidad mensual total a abonar por ${ARR} asciende a ${euros(total)}, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazo}, y que se desglosa en ${listaY([`${euros(renta)} en concepto de renta ${concepto}`, ...desglose])}, conforme a lo pactado sobre suministros en este contrato.`;
+}
+function textoSuministros(datos, c, esHab) {
+  const { ARR, v } = c;
+  const s = suministros(datos);
+  const out = [];
+  const de = (op) => Object.keys(s).filter((k) => s[k].opcion === op);
+  const incl = de("incluida");
+  const topeLuz = s.luz.opcion === "incluida" ? num(s.luz.tope) : 0;
+  if (incl.length) {
+    const base = `La renta pactada incluye ${incl.length > 1 ? "los suministros" : "el suministro"} de ${listaY(incl.map((k) => NOMBRE_SUM[k]))} de la vivienda`;
+    if (topeLuz > 0) {
+      out.push(esHab ? `${base}; en cuanto a la energ\xEDa el\xE9ctrica, siempre que el importe mensual de la factura de electricidad del conjunto de la vivienda no supere los ${euros(topeLuz)}. En caso de superarse dicho l\xEDmite, el exceso ser\xE1 de cuenta de los arrendatarios de la vivienda, repercuti\xE9ndose a partes iguales entre las habitaciones arrendadas, debiendo ${ARR} abonar a EL ARRENDADOR la parte que le corresponda conforme a las facturas que le sean facilitadas.` : `${base}; en cuanto a la energ\xEDa el\xE9ctrica, siempre que el importe mensual de la factura de electricidad no supere los ${euros(topeLuz)}. En caso de superarse dicho l\xEDmite, el exceso ser\xE1 de cuenta de ${ARR}, que ${v("deber\xE1", "deber\xE1n")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`);
+    } else {
+      out.push(`${base}${incl.length === 3 ? `, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos` : ""}.`);
+    }
+  }
+  const tit = de("titularidad");
+  if (tit.length) {
+    out.push(`${tit.length > 1 ? "Ser\xE1n" : "Ser\xE1"} de cuenta de ${ARR} ${tit.length > 1 ? "los suministros" : "el suministro"} de ${listaY(tit.map((k) => NOMBRE_SUM[k]))}. A tal efecto, ${ARR} ${v("deber\xE1", "deber\xE1n")}, en el plazo m\xE1s breve posible desde la entrada en vigor del presente contrato, tramitar a su nombre y con cargo a su cuenta bancaria el cambio de titularidad o, en su caso, la contrataci\xF3n de ${tit.length > 1 ? "dichos suministros" : "dicho suministro"}, haci\xE9ndose cargo a partir de entonces de su alta y abono${c.varios || esHab ? " en la proporci\xF3n que corresponda" : ""}.`);
+  }
+  for (const k of de("cuota")) {
+    const x = s[k];
+    const tope = num(x.tope);
+    out.push(`En cuanto al suministro de ${NOMBRE_SUM[k]}, ${ARR} ${v("abonar\xE1", "abonar\xE1n")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${euros(x.cuota)} mensuales. ${tope > 0 ? `Dicha cantidad cubre el consumo hasta un m\xE1ximo de ${euros(tope)} mensuales; el eventual exceso sobre dicho importe ser\xE1 de cuenta de ${ARR}, que ${v("deber\xE1", "deber\xE1n")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.` : "Dicha cantidad tiene el car\xE1cter de tanto alzado y no ser\xE1 objeto de regularizaci\xF3n."}`);
+  }
+  if (s.luz.opcion === "regularizacion") {
+    const finTxt = datos.fechaFin ? `el d\xEDa ${fechaLarga(datos.fechaFin).replace(/ de \d{4}$/, "")}` : "a la finalizaci\xF3n del contrato";
+    out.push(esHab ? `En cuanto al suministro de energ\xEDa el\xE9ctrica, ${ARR} abonar\xE1 a EL ARRENDADOR, junto con la renta, una cantidad fija de ${euros(s.luz.cuota)} mensuales en concepto de consumo el\xE9ctrico. A la finalizaci\xF3n del contrato, ${finTxt}, se proceder\xE1 a una regularizaci\xF3n final: el importe real de las facturas de electricidad de la vivienda correspondientes al periodo del contrato se dividir\xE1 a partes iguales entre el n\xFAmero de habitaciones arrendadas durante dicho periodo, resultando as\xED la parte proporcional que corresponde a la habitaci\xF3n objeto de este contrato. Si la cantidad abonada por ${ARR} resultase superior a dicha parte proporcional, EL ARRENDADOR le devolver\xE1 el exceso; si, por el contrario, resultase inferior, ${ARR} deber\xE1 abonar a EL ARRENDADOR la diferencia.` : `En cuanto al suministro de energ\xEDa el\xE9ctrica, ${ARR} ${v("abonar\xE1", "abonar\xE1n")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${euros(s.luz.cuota)} mensuales en concepto de consumo el\xE9ctrico. A la finalizaci\xF3n del contrato, ${finTxt}, se proceder\xE1 a una regularizaci\xF3n final, comparando el total abonado por este concepto con el importe real de las facturas de electricidad del periodo del contrato: si lo abonado resultase superior, EL ARRENDADOR devolver\xE1 el exceso a ${ARR}; si resultase inferior, ${ARR} ${v("deber\xE1", "deber\xE1n")} abonar la diferencia.${c.varios ? " Dicha diferencia, a favor o en contra, se distribuir\xE1 a partes iguales entre todos los arrendatarios firmantes." : ""}`);
+  }
+  return out;
+}
+function textoGastosInmueble(datos, c, art20) {
+  const { ARR, v } = c;
+  const gastos = datos.gastos || {};
+  const NOMBRES_G = { comunidad: "los gastos de la comunidad de propietarios", ibi: "el Impuesto sobre Bienes Inmuebles", basura: "la tasa de recogida de basuras" };
+  const delInquilino = Object.keys(NOMBRES_G).filter((k) => gastos[k]?.quien === "arrendatario");
+  const delPropietario = Object.keys(NOMBRES_G).filter((k) => !delInquilino.includes(k));
+  const lista = (ks) => listaY(ks.map((k) => NOMBRES_G[k]));
+  const out = [];
+  if (delPropietario.length === 3) out.push("Ser\xE1n de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y dem\xE1s tributos que graven la propiedad.");
+  else if (delPropietario.length) out.push(`Ser\xE1n de cuenta de EL ARRENDADOR ${delPropietario.map((k) => NOMBRES_G[k]).join(", ")} y dem\xE1s tributos que graven la propiedad.`);
+  if (delInquilino.length) {
+    out.push(`${art20 ? "De conformidad con el art\xEDculo 20.1 de la LAU, las" : "Las"} partes pactan que ser\xE1n de cuenta de ${ARR} ${lista(delInquilino)}, cuyo importe anual a la fecha de este contrato asciende a: ${delInquilino.map((k) => `${NOMBRES_G[k].replace(/^(los|el|la) /, "")}, ${euros(gastos[k].importe)}`).join("; ")}. ${ARR} ${v("abonar\xE1", "abonar\xE1n")} dichas cantidades a EL ARRENDADOR junto con la renta, en la proporci\xF3n mensual correspondiente, previa justificaci\xF3n de su importe.`);
+  }
+  return out;
+}
 function contratoEstudiantes(datos) {
   const esHab = datos.plantilla === "habitacion";
   const c = contexto(datos);
@@ -514,9 +594,7 @@ function contratoEstudiantes(datos) {
   const dir = sinPunto(datos.piso.direccion);
   const renta = num(datos.renta);
   const fianza = datos.fianza != null && datos.fianza !== "" ? num(datos.fianza) : renta;
-  const luz = datos.luz || { opcion: "D" };
-  const cuotaLuz = num(luz.cuota);
-  const conCuota = (luz.opcion === "B" || luz.opcion === "C") && cuotaLuz > 0;
+  const cuotas = cuotasFijas(suministros(datos));
   add("title", "CONTRATO DE ARRENDAMIENTO DE VIVIENDA PARA USO DE VIVIENDA HABITUAL Y PERMANENTE");
   if (esHab) add("subtitle", "(arrendamiento de habitaci\xF3n en vivienda compartida)");
   add("p", `En ${datos.ciudadFirma || HUECO}, a ${fechaLarga(datos.fechaFirma)}.`);
@@ -541,16 +619,11 @@ function contratoEstudiantes(datos) {
   add("p", "Llegada dicha fecha, el contrato se prorrogar\xE1, en su caso, conforme a lo dispuesto en la LAU, salvo que concurra alguna de las causas legales de extinci\xF3n o resoluci\xF3n previstas en dicha normativa.");
   add("p", `En caso de no producirse pr\xF3rroga legal, ${ARR} ${v("deber\xE1", "deber\xE1n")} dejar libre, vacua, expedita y a disposici\xF3n de EL ARRENDADOR ${objetoRef}, junto con sus llaves y enseres.`);
   add("subheading", c.siguiente("Renta y forma de pago."));
-  const conceptoRenta = esHab ? "renta por la habitaci\xF3n arrendada" : "renta por la vivienda arrendada";
   const solid = esHab ? "" : c.varios ? "solidariamente, " : "";
-  if (conCuota) {
-    add("p", `La renta mensual total a abonar por ${ARR} asciende a ${euros(renta + cuotaLuz)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}, y que se desglosa en ${euros(renta)} en concepto de ${conceptoRenta} y ${euros(cuotaLuz)} en concepto de cuota fija por el suministro el\xE9ctrico, conforme a lo dispuesto en el p\xE1rrafo siguiente.`);
-  } else {
-    add("p", `La renta mensual ${esHab ? "de la habitaci\xF3n arrendada" : "de la vivienda"} se fija en ${euros(renta)} mensuales, que ${ARR} se ${v("obliga", "obligan")} a abonar ${solid}por adelantado ${plazoPago(datos)}.`);
-  }
+  add("p", textoRenta(renta, cuotas, { concepto: esHab ? "de la habitaci\xF3n arrendada" : "de la vivienda", ARR, v, solid, plazo: plazoPago(datos) }));
   const concepto = `Alquiler ${datos.piso.nombre} + ${c.inquilinos.map((i) => i.nombre).join(" y ")}`;
   add("p", `El pago se realizar\xE1 mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, debiendo hacerse constar en el concepto de la transferencia: "${concepto}".`);
-  add("p", textoLuzEstudiantes(luz, c, esHab, datos.fechaFin));
+  textoSuministros(datos, c, esHab).forEach((t) => add("p", t));
   add("p", textoActualizacion(c));
   add("subheading", c.siguiente("Fianza."));
   add("p", `En el momento de la firma del presente contrato, ${ARR} ${v("hace", "hacen")} entrega a EL ARRENDADOR, en concepto de fianza legal y de conformidad con el art\xEDculo 36 de la LAU, de la cantidad de ${euros(fianza)}, equivalente a una mensualidad de renta. La fianza ser\xE1 devuelta a ${ARR} a la finalizaci\xF3n del contrato, previa comprobaci\xF3n del buen estado de ${objetoRef} y enseres, y una vez deducidas, en su caso, las cantidades que correspondan en concepto de desperfectos, suministros pendientes u otras cantidades adeudadas.`);
@@ -570,7 +643,11 @@ function contratoEstudiantes(datos) {
   const objLimpieza = esHab ? "la habitaci\xF3n arrendada, as\xED como las zonas comunes de la vivienda (cocina, sal\xF3n, ba\xF1os y dem\xE1s estancias de uso compartido)," : "la vivienda arrendada";
   if (condiciones(datos).limpieza) add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que exist\xEDan al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero s\xED un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podr\xE1 descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
   add("subheading", c.siguiente("Gastos."));
-  add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y dem\xE1s tributos que graven la propiedad) ser\xE1n de cuenta de EL ARRENDADOR. Los gastos por suministros se regir\xE1n por lo dispuesto en la cl\xE1usula tercera.");
+  if (esHab) add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y dem\xE1s tributos que graven la propiedad) ser\xE1n de cuenta de EL ARRENDADOR. Los suministros se rigen por lo dispuesto en la cl\xE1usula de renta y forma de pago.");
+  else {
+    textoGastosInmueble(datos, c, true).forEach((t) => add("p", t));
+    add("p", "Los suministros se rigen por lo dispuesto en la cl\xE1usula de renta y forma de pago.");
+  }
   add("subheading", c.siguiente("Resoluci\xF3n."));
   add("p", "Ser\xE1n causa de resoluci\xF3n del presente contrato, adem\xE1s de las previstas en el art\xEDculo 27 de la LAU, el impago de la renta o de cualquier cantidad asimilada a la misma, el incumplimiento grave de las obligaciones de conservaci\xF3n y buen uso, y la cesi\xF3n o el subarriendo no consentidos por EL ARRENDADOR.");
   add("subheading", c.siguiente("Notificaciones."));
@@ -581,26 +658,77 @@ function contratoEstudiantes(datos) {
   bloqueFirmas(add, datos, c);
   return L;
 }
-function textoLuzEstudiantes(luz, c, esHab, fechaFin) {
+function contratoTemporada(datos) {
+  const esHab = datos.plantilla === "temporada_habitacion";
+  const c = contexto(datos);
   const { ARR, v } = c;
-  const cuota = euros(luz.cuota);
-  const finTxt = fechaFin ? `el d\xEDa ${fechaLarga(fechaFin).replace(/ de \d{4}$/, "")}` : "a la finalizaci\xF3n del contrato";
-  switch (luz.opcion) {
-    case "A":
-      return `La renta pactada incluye los suministros de agua y conexi\xF3n a internet (wifi) de la vivienda. El suministro de energ\xEDa el\xE9ctrica se encuentra actualmente contratado a nombre de EL ARRENDADOR. ${ARR} ${v("deber\xE1", "deber\xE1n")}, en el plazo m\xE1s breve posible desde la entrada en vigor del presente contrato, tramitar el cambio de titularidad de dicho suministro a su nombre y con cargo a su cuenta bancaria, haci\xE9ndose cargo a partir de entonces de su contrataci\xF3n, alta y abono${c.varios ? " en la proporci\xF3n que corresponda" : ""}.`;
-    case "B":
-      return `La renta pactada incluye los suministros de agua y conexi\xF3n a internet (wifi) de la vivienda. En cuanto al suministro de energ\xEDa el\xE9ctrica, ${ARR} ${v("abonar\xE1", "abonar\xE1n")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${cuota} mensuales en concepto de consumo el\xE9ctrico. Dicha cantidad cubre el consumo hasta un m\xE1ximo de ${euros(luz.tope)} mensuales; el eventual exceso sobre dicho importe ser\xE1 de cuenta de ${ARR}, que ${v("deber\xE1", "deber\xE1n")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`;
-    case "C":
-      if (esHab) {
-        return `La renta pactada incluye los suministros de agua y conexi\xF3n a internet (wifi) de la vivienda. En cuanto al suministro de energ\xEDa el\xE9ctrica, ${ARR} abonar\xE1 a EL ARRENDADOR, junto con la renta, una cantidad fija de ${cuota} mensuales en concepto de consumo el\xE9ctrico. A la finalizaci\xF3n del contrato, ${finTxt}, se proceder\xE1 a una regularizaci\xF3n final: el importe real de las facturas de electricidad de la vivienda correspondientes al periodo del contrato se dividir\xE1 a partes iguales entre el n\xFAmero de habitaciones arrendadas durante dicho periodo, resultando as\xED la parte proporcional que corresponde a la habitaci\xF3n objeto de este contrato. Si la cantidad abonada por ${ARR} resultase superior a dicha parte proporcional, EL ARRENDADOR le devolver\xE1 el exceso; si, por el contrario, resultase inferior, ${ARR} deber\xE1 abonar a EL ARRENDADOR la diferencia.`;
-      }
-      return `La renta pactada incluye los suministros de agua y conexi\xF3n a internet (wifi) de la vivienda. En cuanto al suministro de energ\xEDa el\xE9ctrica, ${ARR} ${v("abonar\xE1", "abonar\xE1n")} a EL ARRENDADOR, junto con la renta, una cantidad fija de ${cuota} mensuales en concepto de consumo el\xE9ctrico. A la finalizaci\xF3n del contrato, ${finTxt}, se proceder\xE1 a una regularizaci\xF3n final, comparando el total abonado por este concepto con el importe real de las facturas de electricidad del periodo del contrato: si lo abonado resultase superior, EL ARRENDADOR devolver\xE1 el exceso a ${ARR}; si resultase inferior, ${ARR} ${v("deber\xE1", "deber\xE1n")} abonar la diferencia.${c.varios ? " Dicha diferencia, a favor o en contra, se distribuir\xE1 a partes iguales entre todos los arrendatarios firmantes." : ""}`;
-    default:
-      if (num(luz.tope) > 0) {
-        return esHab ? `La renta pactada incluye los suministros de agua, conexi\xF3n a internet (wifi) y energ\xEDa el\xE9ctrica de la vivienda, siempre que el importe mensual de la factura de electricidad del conjunto de la vivienda no supere los ${euros(luz.tope)}. En caso de superarse dicho l\xEDmite, el exceso ser\xE1 de cuenta de los arrendatarios de la vivienda, repercuti\xE9ndose a partes iguales entre las habitaciones arrendadas, debiendo ${ARR} abonar a EL ARRENDADOR la parte que le corresponda conforme a las facturas que le sean facilitadas.` : `La renta pactada incluye los suministros de agua, conexi\xF3n a internet (wifi) y energ\xEDa el\xE9ctrica de la vivienda, siempre que el importe mensual de la factura de electricidad no supere los ${euros(luz.tope)}. En caso de superarse dicho l\xEDmite, el exceso ser\xE1 de cuenta de ${ARR}, que ${v("deber\xE1", "deber\xE1n")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`;
-      }
-      return `La renta pactada incluye los suministros de agua, conexi\xF3n a internet (wifi) y energ\xEDa el\xE9ctrica de la vivienda, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos.`;
+  const L = [];
+  const add = (type, text) => L.push({ type, text });
+  const objetoRef = esHab ? "la habitaci\xF3n arrendada" : "la vivienda arrendada";
+  const dir = sinPunto(datos.piso.direccion);
+  const renta = num(datos.renta);
+  const fianza = datos.fianza != null && datos.fianza !== "" ? num(datos.fianza) : renta * 2;
+  const cuotas = cuotasFijas(suministros(datos));
+  const motivo = sinPunto(datos.motivoTemporada) || HUECO;
+  add("title", "CONTRATO DE ARRENDAMIENTO DE TEMPORADA");
+  add("subtitle", esHab ? "(arrendamiento de habitaci\xF3n en vivienda compartida para uso distinto del de vivienda habitual)" : "(arrendamiento para uso distinto del de vivienda habitual)");
+  add("p", `En ${datos.ciudadFirma || HUECO}, a ${fechaLarga(datos.fechaFirma)}.`);
+  add("heading", "REUNIDOS");
+  bloquesReunidos(datos, add, c, { conDomicilioTitulo: "habitual y permanente" });
+  add("heading", "EXPONEN");
+  const nH = parseInt(datos.piso.numHabitaciones, 10) || 0;
+  const descr = sinPunto(datos.piso.descripcion || "") || (nH ? `compuesta por ${nH} ${nH === 1 ? "dormitorio" : "dormitorios"}` : "");
+  add("p", `I. Que EL ARRENDADOR es propietario de la vivienda sita en ${dir}${descr ? `, ${descr}` : ""}, debidamente amueblada y en condiciones de habitabilidad.`);
+  add("p", `II. Que ${ARR} ${v("necesita", "necesitan")} ocupar temporalmente ${esHab ? "una habitaci\xF3n de dicha vivienda" : "dicha vivienda"} por el siguiente motivo: ${motivo}, manteniendo ${c.varios ? "cada uno de ellos" : ""} su vivienda habitual y permanente en el domicilio indicado en el encabezamiento.`.replace("manteniendo  su", "manteniendo su"));
+  add("p", `III. Que, en atenci\xF3n a dicha necesidad temporal, las partes acuerdan celebrar un contrato de arrendamiento de temporada, para uso distinto del de vivienda, conforme al art\xEDculo 3.2 de la ${LAU} (en adelante, "LAU"), que se regir\xE1 por la voluntad de las partes, en su defecto por lo dispuesto en el T\xEDtulo III de la LAU y, supletoriamente, por el C\xF3digo Civil, de acuerdo con el art\xEDculo 4.3 de la LAU, y en particular por las siguientes`);
+  add("heading", "CL\xC1USULAS");
+  add("subheading", c.siguiente("Objeto y destino."));
+  if (esHab) {
+    add("p", `EL ARRENDADOR cede en arrendamiento a ${ARR}, que lo recibe de conformidad, la habitaci\xF3n identificada como \xAB${datos.habitacion || HUECO}\xBB dentro de la vivienda sita en ${dir}, amueblada, junto con el derecho de uso compartido, en condiciones de igualdad con los restantes ocupantes de la vivienda, de sus zonas comunes (cocina, sal\xF3n, ba\xF1os, terrazas y dem\xE1s estancias no destinadas a uso privativo de un ocupante).`);
+  } else {
+    add("p", `EL ARRENDADOR cede en arrendamiento a ${ARR}, que ${v("lo recibe", "lo reciben")} de conformidad, la totalidad de la vivienda sita en ${dir}, junto con el mobiliario y enseres que la integran.`);
   }
+  add("p", `El arrendamiento se destina exclusivamente a satisfacer la necesidad temporal descrita en el expositivo II. ${ARR} ${v("declara", "declaran")} que ${objetoRef} no constituir\xE1 su vivienda habitual y permanente. El cambio de dicho destino sin autorizaci\xF3n escrita de EL ARRENDADOR ser\xE1 causa de resoluci\xF3n del contrato.`);
+  add("subheading", c.siguiente("Duraci\xF3n."));
+  add("p", `El presente contrato tendr\xE1 una duraci\xF3n determinada, desde el d\xEDa ${fechaLarga(datos.fechaInicio)} hasta el d\xEDa ${fechaLarga(datos.fechaFin)}.`);
+  add("p", `Llegada la fecha de vencimiento, el contrato quedar\xE1 extinguido de pleno derecho, sin necesidad de requerimiento previo y sin que proceda pr\xF3rroga alguna, excluyendo las partes expresamente la t\xE1cita reconducci\xF3n prevista en el art\xEDculo 1566 del C\xF3digo Civil. En dicha fecha, ${ARR} ${v("deber\xE1", "deber\xE1n")} dejar libre, vacua, expedita y a disposici\xF3n de EL ARRENDADOR ${objetoRef}, junto con sus llaves y enseres. Cualquier ampliaci\xF3n del plazo deber\xE1 pactarse por escrito.`);
+  add("subheading", c.siguiente("Renta y forma de pago."));
+  add("p", textoRenta(renta, cuotas, { concepto: esHab ? "de la habitaci\xF3n arrendada" : "de la vivienda", ARR, v, solid: !esHab && c.varios ? "solidariamente, " : "", plazo: plazoPago(datos) }));
+  add("p", `El pago se realizar\xE1 mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, debiendo hacerse constar en el concepto de la transferencia: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map((i) => i.nombre).join(" y ")}". El justificante de la transferencia servir\xE1 de recibo, salvo prueba en contrario.`);
+  add("p", "Si la duraci\xF3n del contrato fuese superior a un a\xF1o, la renta se actualizar\xE1 en cada anualidad conforme a la variaci\xF3n anual del \xCDndice de Precios de Consumo (IPC) publicado por el Instituto Nacional de Estad\xEDstica, con sujeci\xF3n en todo caso a los l\xEDmites que establezca la normativa vigente.");
+  add("subheading", c.siguiente("Suministros."));
+  textoSuministros(datos, c, esHab).forEach((t) => add("p", t));
+  add("subheading", c.siguiente("Fianza."));
+  add("p", `En el momento de la firma del presente contrato, ${ARR} ${v("hace", "hacen")} entrega a EL ARRENDADOR de la cantidad de ${euros(fianza)} en concepto de fianza legal, conforme al art\xEDculo 36.1 de la LAU, que para los arrendamientos para uso distinto del de vivienda la fija en dos mensualidades de renta. La fianza ser\xE1 devuelta a ${ARR} en el plazo de un mes desde la entrega de llaves, previa comprobaci\xF3n del buen estado de ${objetoRef} y enseres, y una vez deducidas, en su caso, las cantidades que correspondan en concepto de desperfectos, suministros pendientes u otras cantidades adeudadas. La fianza no podr\xE1 aplicarse al pago de la \xFAltima mensualidad de renta.`);
+  bloquesGarantiaYDeposito(add, datos, ARR, v, renta);
+  if (c.avales.length) {
+    add("subheading", c.siguiente(c.avales.length > 1 ? "Fiadores solidarios." : "Fiador solidario."));
+    bloqueFiadores(add, c, objetoRef, esHab);
+  }
+  if (!esHab && c.varios) {
+    add("p", `${ARR} firmantes del presente contrato responden solidariamente entre s\xED frente a EL ARRENDADOR del cumplimiento \xEDntegro de las obligaciones derivadas de este contrato, y en particular del pago de la totalidad de la renta pactada, con independencia de la parte proporcional que individualmente les corresponda satisfacer.`);
+  }
+  if (esHab) {
+    add("p", `La responsabilidad de ${ARR}${c.avales.length ? ` y de su${c.avales.length > 1 ? "s fiadores" : " fiador"}` : ""} se circunscribe exclusivamente a las obligaciones derivadas del arrendamiento de su propia habitaci\xF3n, sin extenderse a las que pudieran corresponder a los restantes ocupantes de la vivienda, quienes mantienen, en su caso, contratos independientes con EL ARRENDADOR.`);
+  }
+  add("subheading", c.siguiente("Conservaci\xF3n, uso y obras."));
+  add("p", `${ARR} se ${v("obliga", "obligan")} a conservar ${esHab ? "la habitaci\xF3n y las zonas comunes" : "la vivienda"}, su mobiliario y sus instalaciones en buen estado, sin desarrollar en ${esHab ? "ellas" : "ella"} actividades molestas, insalubres, nocivas, peligrosas o il\xEDcitas, ni realizar obras sin consentimiento escrito de EL ARRENDADOR, ni ceder el contrato o subarrendar, total o parcialmente, ${objetoRef}. Las peque\xF1as reparaciones que exija el desgaste por el uso ordinario ser\xE1n de cuenta de ${ARR}.`);
+  const objLimpieza = esHab ? "la habitaci\xF3n arrendada, as\xED como las zonas comunes de la vivienda (cocina, sal\xF3n, ba\xF1os y dem\xE1s estancias de uso compartido)," : "la vivienda arrendada";
+  if (condiciones(datos).limpieza) add("p", `Asimismo, ${ARR} se ${v("obliga", "obligan")} a devolver ${objLimpieza} en unas condiciones generales de limpieza equiparables a las que exist\xEDan al inicio del contrato, sin que sea exigible un estado de limpieza impecable, pero s\xED un estado adecuado y no descuidado. Si al finalizar el contrato no se entregase en dichas condiciones, EL ARRENDADOR podr\xE1 descontar de la fianza el importe correspondiente para restituirlas a un estado adecuado de limpieza.`);
+  if (datos.conFotos) add("p", `Como anexo a este contrato se adjuntan fotograf\xEDas del estado de ${esHab ? "la habitaci\xF3n y la vivienda" : "la vivienda"} a la fecha de entrega.`);
+  add("subheading", c.siguiente("Gastos."));
+  if (esHab) add("p", "Los gastos generales del inmueble (comunidad de propietarios, Impuesto sobre Bienes Inmuebles y dem\xE1s tributos que graven la propiedad) ser\xE1n de cuenta de EL ARRENDADOR.");
+  else textoGastosInmueble(datos, c, false).forEach((t) => add("p", t));
+  add("subheading", c.siguiente("Resoluci\xF3n."));
+  add("p", "Ser\xE1n causa de resoluci\xF3n del presente contrato, adem\xE1s de las previstas en el art\xEDculo 35 de la LAU y en el art\xEDculo 1124 del C\xF3digo Civil, el impago de la renta o de cualquier cantidad asimilada a la misma, el incumplimiento grave de las obligaciones de conservaci\xF3n y buen uso, el cambio de destino y la cesi\xF3n o el subarriendo no consentidos por EL ARRENDADOR.");
+  add("subheading", c.siguiente("Notificaciones."));
+  add("p", `Las notificaciones a ${ARR} se practicar\xE1n en el domicilio habitual indicado en el encabezamiento o en ${objetoRef}, y las dirigidas a EL ARRENDADOR, en el domicilio indicado en el encabezamiento. Ser\xE1n igualmente v\xE1lidas las comunicaciones por correo electr\xF3nico o mensajer\xEDa siempre que quede constancia de su recepci\xF3n.`);
+  add("subheading", c.siguiente("Normativa aplicable y jurisdicci\xF3n."));
+  add("p", "El presente contrato se rige por la voluntad de las partes expresada en sus cl\xE1usulas, en su defecto por el T\xEDtulo III de la LAU y, supletoriamente, por el C\xF3digo Civil. Para cualquier controversia derivada del mismo ser\xE1n competentes los Juzgados y Tribunales del lugar en que radica la vivienda.");
+  bloqueClausulasExtra(add, datos, c);
+  bloqueFirmas(add, datos, c);
+  if (datos.conFotos) add("annex", "ANEXO I. ESTADO ACTUAL DE LA VIVIENDA");
+  return L;
 }
 function contratoLargaDuracion(datos) {
   const c = contexto(datos);
@@ -610,8 +738,7 @@ function contratoLargaDuracion(datos) {
   const dir = sinPunto(datos.piso.direccion);
   const renta = num(datos.renta);
   const fianza = datos.fianza != null && datos.fianza !== "" ? num(datos.fianza) : renta;
-  const agua = datos.agua || { opcion: "cuota", cuota: 0 };
-  const cuotaAgua = agua.opcion === "cuota" ? num(agua.cuota) : 0;
+  const cuotas = cuotasFijas(suministros(datos));
   const entrega = datos.fechaEntrega || datos.fechaInicio;
   const objetoRef = "la vivienda arrendada";
   add("title", "CONTRATO DE ARRENDAMIENTO DE VIVIENDA PARA USO DE VIVIENDA HABITUAL");
@@ -632,12 +759,8 @@ function contratoLargaDuracion(datos) {
   add("p", `Transcurridos los cinco a\xF1os, si ninguna de las partes hubiese notificado a la otra su voluntad de no renovar el contrato, con al menos cuatro meses de antelaci\xF3n en el caso de EL ARRENDADOR o dos meses en el caso de ${ARR}, el contrato se prorrogar\xE1 obligatoriamente por plazos anuales hasta un m\xE1ximo de tres a\xF1os m\xE1s, salvo que ${ARR} ${v("manifieste", "manifiesten")} con un mes de antelaci\xF3n a la fecha de terminaci\xF3n de cualquiera de dichas anualidades su voluntad de no renovarlo, conforme al art\xEDculo 10 de la LAU.`);
   add("p", `No obstante lo anterior, ${ARR} ${v("podr\xE1", "podr\xE1n")} desistir del contrato una vez transcurridos al menos seis meses desde su entrada en vigor, siempre que lo ${v("comunique", "comuniquen")} a EL ARRENDADOR con una antelaci\xF3n m\xEDnima de treinta d\xEDas, conforme al art\xEDculo 11 de la LAU.`);
   add("subheading", c.siguiente("Renta y forma de pago."));
-  if (cuotaAgua > 0) {
-    add("p", `La renta mensual se fija en ${euros(renta)}, a la que se a\xF1ade una cantidad fija de ${euros(cuotaAgua)} mensuales en concepto de suministro de agua, conforme a la cl\xE1usula de gastos, lo que hace un total de ${euros(renta + cuotaAgua)} mensuales.`);
-  } else {
-    add("p", `La renta mensual se fija en ${euros(renta)}.`);
-  }
-  add("p", `${ARR} se ${v("obliga", "obligan")} a abonar dicha cantidad ${c.varios ? "solidariamente, " : ""}por adelantado ${plazoPago(datos)}, mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map((i) => i.nombre).join(" y ")}". El justificante de la transferencia acreditar\xE1 el pago y servir\xE1 de recibo, salvo prueba en contrario.`);
+  add("p", textoRenta(renta, cuotas, { concepto: "de la vivienda", ARR, v, solid: c.varios ? "solidariamente, " : "", plazo: plazoPago(datos) }));
+  add("p", `El pago se realizar\xE1 mediante transferencia bancaria a la cuenta de titularidad de EL ARRENDADOR ${datos.iban}, haciendo constar en el concepto: "Alquiler ${datos.piso.nombre} + ${c.inquilinos.map((i) => i.nombre).join(" y ")}". El justificante de la transferencia acreditar\xE1 el pago y servir\xE1 de recibo, salvo prueba en contrario.`);
   add("p", "Las cantidades no satisfechas en plazo devengar\xE1n el inter\xE9s legal del dinero desde la fecha en que debieron abonarse.");
   add("subheading", c.siguiente("Actualizaci\xF3n de la renta."));
   add("p", textoActualizacion(c));
@@ -651,22 +774,8 @@ function contratoLargaDuracion(datos) {
     bloqueFiadores(add, c, objetoRef, false);
   }
   add("subheading", c.siguiente("Gastos y suministros."));
-  const G = datos.gastos || {};
-  const NOMBRES_G = { comunidad: "los gastos de la comunidad de propietarios", ibi: "el Impuesto sobre Bienes Inmuebles", basura: "la tasa de recogida de basuras" };
-  const delInquilino = Object.keys(NOMBRES_G).filter((k) => G[k]?.quien === "arrendatario");
-  const delPropietario = Object.keys(NOMBRES_G).filter((k) => !delInquilino.includes(k));
-  const lista = (ks) => ks.map((k) => NOMBRES_G[k]).join(ks.length > 1 ? ", " : "").replace(/, ([^,]*)$/, " y $1");
-  if (delPropietario.length === 3) add("p", "Ser\xE1n de cuenta de EL ARRENDADOR los gastos de la comunidad de propietarios, el Impuesto sobre Bienes Inmuebles, la tasa de recogida de basuras y dem\xE1s tributos que graven la propiedad.");
-  else if (delPropietario.length) add("p", `Ser\xE1n de cuenta de EL ARRENDADOR ${lista(delPropietario)} y dem\xE1s tributos que graven la propiedad.`);
-  if (delInquilino.length) {
-    add("p", `De conformidad con el art\xEDculo 20.1 de la LAU, las partes pactan que ser\xE1n de cuenta de ${ARR} ${lista(delInquilino)}, cuyo importe anual a la fecha de este contrato asciende a: ${delInquilino.map((k) => `${NOMBRES_G[k].replace(/^(los|el|la) /, "")}, ${euros(G[k].importe)}`).join("; ")}. ${ARR} ${v("abonar\xE1", "abonar\xE1n")} dichas cantidades a EL ARRENDADOR junto con la renta, en la proporci\xF3n mensual correspondiente, previa justificaci\xF3n de su importe.`);
-  }
-  add("p", `Ser\xE1n de cuenta de ${ARR} los gastos por consumo de energ\xEDa el\xE9ctrica. A tal efecto, ${ARR} ${v("deber\xE1", "deber\xE1n")}, en el plazo m\xE1s breve posible desde la entrada en vigor del presente contrato, tramitar el cambio de titularidad de dicho suministro a su nombre y con cargo a su cuenta bancaria.`);
-  if (cuotaAgua > 0) {
-    add("p", `En cuanto al suministro de agua, ${ARR} ${v("abonar\xE1", "abonar\xE1n")} a EL ARRENDADOR la cantidad fija de ${euros(cuotaAgua)} mensuales indicada en la cl\xE1usula de renta.`);
-  } else {
-    add("p", "El suministro de agua est\xE1 incluido en la renta pactada.");
-  }
+  textoGastosInmueble(datos, c, true).forEach((t) => add("p", t));
+  textoSuministros(datos, c, false).forEach((t) => add("p", t));
   add("p", `Cualquier otro servicio o suministro susceptible de individualizarse mediante contador ser\xE1 igualmente de cuenta de ${ARR}.`);
   add("subheading", c.siguiente("Conservaci\xF3n, obras y subarriendo."));
   add("p", `${ARR} se ${v("obliga", "obligan")} a conservar la vivienda, su mobiliario y sus instalaciones en buen estado. Las peque\xF1as reparaciones que exija el desgaste por el uso ordinario ser\xE1n de cuenta de ${ARR}, conforme al art\xEDculo 21.4 de la LAU; las reparaciones necesarias para conservar la vivienda en condiciones de habitabilidad corresponden a EL ARRENDADOR, conforme al art\xEDculo 21.1 de la LAU.`);
@@ -1412,15 +1521,112 @@ function fechaCorta(ts) {
   return `${d.getDate()} ${MESES[d.getMonth()].slice(0, 3)}`;
 }
 var PLANTILLAS = {
-  habitacion: "Habitaci\xF3n",
-  piso_entero: "Piso entero",
-  larga_duracion: "Larga duraci\xF3n"
+  temporada_habitacion: "Temporada \xB7 por habitaciones",
+  temporada_piso: "Temporada \xB7 piso entero",
+  habitacion: "Vivienda habitual \xB7 por habitaciones",
+  larga_duracion: "Vivienda habitual \xB7 piso entero",
+  piso_entero: "Piso entero (estudiantes)"
 };
+var TIPO_DE = {
+  temporada_habitacion: ["temporada", "habitacion"],
+  temporada_piso: ["temporada", "piso"],
+  habitacion: ["habitual", "habitacion"],
+  larga_duracion: ["habitual", "piso"],
+  piso_entero: ["habitual", "piso"]
+};
+function plantillaDe(dur, mod) {
+  if (dur === "temporada") return mod === "habitacion" ? "temporada_habitacion" : "temporada_piso";
+  return mod === "habitacion" ? "habitacion" : "larga_duracion";
+}
+var INFO_TIPOS = `<div class="tarjeta info-tipos" style="gap:8px;font-size:13.5px;line-height:1.5">
+  <div><b>Temporada.</b> Para estancias limitadas con un motivo concreto (estudios, un trabajo temporal, una obra en su casa\u2026), mientras el inquilino mantiene su vivienda habitual en otro sitio. Dura lo que pact\xE9is y termina en la fecha fijada, sin pr\xF3rrogas obligatorias. Fianza de dos mensualidades. El motivo tiene que constar en el contrato.</div>
+  <div><b>Vivienda habitual.</b> El inquilino vive ah\xED de forma permanente. Se rige por la Ley de Arrendamientos Urbanos: aunque firm\xE9is un a\xF1o, puede quedarse hasta 5 a\xF1os (7 si el propietario es una empresa) y puede irse a partir de los 6 meses avisando con 30 d\xEDas. Fianza de una mensualidad y subida anual limitada al \xEDndice oficial (IRAV).</div>
+  <div><b>Por habitaciones.</b> Un contrato por cada inquilino y su habitaci\xF3n, con uso compartido de cocina, sal\xF3n y ba\xF1os. Cada uno responde solo de lo suyo.</div>
+  <div><b>Piso entero.</b> Un \xFAnico contrato con todos los inquilinos, que responden juntos (solidariamente) de toda la renta.</div>
+  <div class="ayuda">Si en la pr\xE1ctica el inquilino vive ah\xED todo el a\xF1o, un juez puede considerar que es vivienda habitual aunque el contrato diga temporada.</div>
+</div>`;
+function selectorTipo(pl) {
+  const [dur, mod] = TIPO_DE[pl] || TIPO_DE.habitacion;
+  return `<div class="fila-info"><span class="eti-campo" style="margin:0">Tipo de contrato</span>
+      <button type="button" class="btn-info" data-info-tipos aria-label="Diferencias entre los tipos de contrato">i</button></div>
+    <div data-info-caja style="display:none">${INFO_TIPOS}</div>
+    ${segmento("tipoDuracion", [["temporada", "Temporada"], ["habitual", "Vivienda habitual"]], dur)}
+    ${segmento("tipoModalidad", [["habitacion", "Por habitaciones"], ["piso", "Piso entero"]], mod)}
+    <input type="hidden" name="plantilla" value="${esc(pl)}">
+    <button type="button" class="btn secundario" data-modelo-pdf style="min-height:40px;align-self:flex-start">Ver el modelo en PDF</button>`;
+}
+function activarSelectorTipo(root, datosModelo2) {
+  const dur = $("[name=tipoDuracion]", root), mod = $("[name=tipoModalidad]", root), pl = $("[name=plantilla]", root);
+  const cambiar = () => {
+    pl.value = plantillaDe(dur.value, mod.value);
+    pl.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  dur.addEventListener("change", cambiar);
+  mod.addEventListener("change", cambiar);
+  $("[data-info-tipos]", root).onclick = () => {
+    const c = $("[data-info-caja]", root);
+    c.style.display = c.style.display === "none" ? "" : "none";
+  };
+  $("[data-modelo-pdf]", root).onclick = async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      const datos = await datosModelo2(pl.value);
+      const bytes = await construirPdf(generarContrato(datos), null);
+      bajar(bytes, `Modelo_${String(PLANTILLAS[pl.value] || pl.value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
+    } catch (err) {
+      aviso("No se pudo crear el modelo: " + err.message, true);
+    }
+    b.disabled = false;
+  };
+}
+async function datosModelo(pl, extra = {}) {
+  const a = await leerAjustes();
+  const props = (a.propietarios || []).filter((p2) => p2.nombre);
+  return {
+    plantilla: pl,
+    ciudadFirma: extra.ciudad || a.ciudadFirma || "",
+    fechaFirma: "",
+    condiciones: a.condiciones || {},
+    cambiosModelo: a.modelos?.[pl] || [],
+    propietarios: props.length ? props : [{ tratamiento: "D.", nombre: "[Nombre del propietario]", tipoDoc: "DNI", numDoc: "" }],
+    domicilioPropietarios: a.domicilio || "______________",
+    iban: a.iban || "[IBAN]",
+    piso: { nombre: extra.nombre || "[Piso]", direccion: extra.direccion || "______________", descripcion: extra.descripcion || "", numHabitaciones: extra.numHabitaciones || 0 },
+    habitacion: porHabitacion(pl) ? "1" : "",
+    inquilinos: [{
+      tratamiento: "D.",
+      nombre: "[Nombre del inquilino]",
+      tipoDoc: "DNI",
+      numDoc: "",
+      domicilio: "",
+      avales: [{ tratamiento: "D.", nombre: "[Nombre del avalista]", tipoDoc: "DNI", numDoc: "", parentesco: "" }]
+    }],
+    renta: extra.renta || "",
+    fianza: extra.renta ? "" : "_",
+    fechaInicio: "",
+    fechaFin: "",
+    fechaEntrega: "",
+    motivoTemporada: extra.motivoTemporada || "",
+    luz: extra.luz,
+    agua: extra.agua,
+    wifi: extra.wifi,
+    gastos: extra.gastos || {},
+    conFotos: false
+  };
+}
+function resumenSuministros(x) {
+  const imp = (s) => `cuota ${euros(s.cuota)}${s.tope ? ` con tope ${euros(s.tope)}` : ""}`;
+  const t = (s) => !s || s.opcion === "incluida" ? "incluida" : s.opcion === "titularidad" ? "a nombre del inquilino" : imp(s);
+  const l = x.luz || { opcion: "D" };
+  const luz = l.opcion === "A" ? "a nombre del inquilino" : l.opcion === "D" ? `incluida${l.tope ? ` (tope ${euros(l.tope)})` : ""}` : imp(l);
+  return `Luz ${luz} \xB7 agua ${t(x.agua)} \xB7 wifi ${t(x.wifi)}`;
+}
 var LUZ = {
   A: { t: "Cambio de titularidad", d: "El inquilino pone la luz a su nombre" },
   B: { t: "Cuota fija con tope", d: "Paga una cuota fija; el exceso del tope aparte" },
   C: { t: "Cuota fija + regularizaci\xF3n", d: "Se ajusta con las facturas reales al final" },
-  D: { t: "Todo incluido", d: "Agua, wifi y luz en la renta (tope opcional)" }
+  D: { t: "Incluida en el precio", d: "La luz va en la renta (tope opcional)" }
 };
 var LETRAS = "TRWAGMYFPDXBNJZSQVHLCKE";
 function normalizarDoc(n) {
@@ -1678,10 +1884,63 @@ function activarLuz(root) {
   });
   ajustar();
 }
-function camposAgua(agua = { opcion: "cuota", cuota: "" }) {
-  return `<div class="eti-campo">Agua</div>
-    ${segmento("aguaOpcion", [["cuota", "Cuota fija"], ["incluida", "Incluida"]], agua.opcion)}
-    ${campo("Cuota mensual de agua (\u20AC)", "aguaCuota", agua.cuota ?? "", 'inputmode="decimal"')}`;
+function camposSuministro(clave, titulo, s = { opcion: "incluida" }) {
+  const aparte = s.opcion && s.opcion !== "incluida";
+  return `<div class="tarjeta" data-suministro="${clave}" style="gap:10px">
+    <div class="nombre" style="font-size:14px">${titulo}</div>
+    <label class="check"><input type="checkbox" name="${clave}Aparte" ${aparte ? "checked" : ""}> Se paga aparte (no va incluido en el precio)</label>
+    <div data-aparte class="seccion" style="padding:0;gap:8px">
+      ${segmento(`${clave}Opcion`, [["titularidad", "Cambio de titularidad"], ["cuota", "Cuota fija con tope"]], s.opcion === "cuota" ? "cuota" : "titularidad")}
+      <div class="rejilla" data-cuota>
+        ${campo("Cuota fija mensual (\u20AC)", `${clave}Cuota`, s.cuota ?? "", 'inputmode="decimal"')}
+        ${campo("Tope mensual (\u20AC, opcional)", `${clave}Tope`, s.tope ?? "", 'inputmode="decimal"')}
+      </div></div></div>`;
+}
+function activarSuministros(root) {
+  const ajustar = () => $$("[data-suministro]", root).forEach((t) => {
+    const k = t.dataset.suministro;
+    const ap = $(`[name=${k}Aparte]`, t).checked;
+    $("[data-aparte]", t).style.display = ap ? "" : "none";
+    $("[data-cuota]", t).style.display = $(`[name=${k}Opcion]`, t).value === "cuota" ? "" : "none";
+  });
+  root.addEventListener("change", ajustar);
+  ajustar();
+}
+function leerSuministro(root, k) {
+  if (!$(`[name=${k}Aparte]`, root)?.checked) return { opcion: "incluida" };
+  const v = (n) => ($(`[name="${k}${n}"]`, root)?.value ?? "").trim();
+  const opcion = v("Opcion") || "titularidad";
+  return opcion === "cuota" ? { opcion, cuota: v("Cuota"), tope: v("Tope") } : { opcion };
+}
+async function imagenesAPdf(archivos) {
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+  let primera = true;
+  for (const f of archivos) {
+    const url = await new Promise((ok, ko) => {
+      const r2 = new FileReader();
+      r2.onload = () => ok(r2.result);
+      r2.onerror = ko;
+      r2.readAsDataURL(f);
+    });
+    const img = await new Promise((ok, ko) => {
+      const i = new Image();
+      i.onload = () => ok(i);
+      i.onerror = () => ko(new Error(`No se puede leer ${f.name}`));
+      i.src = url;
+    });
+    const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(img.width * k);
+    cv.height = Math.round(img.height * k);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    if (!primera) pdf.addPage();
+    primera = false;
+    const m = 10, r = Math.min((210 - 2 * m) / cv.width, (297 - 2 * m) / cv.height);
+    const w = cv.width * r, h2 = cv.height * r;
+    pdf.addImage(cv.toDataURL("image/jpeg", 0.8), "JPEG", (210 - w) / 2, (297 - h2) / 2, w, h2);
+  }
+  return pdf.output("arraybuffer");
 }
 function camposGasto(clave, titulo, g = {}) {
   return `<div class="tarjeta" data-gasto="${clave}" style="gap:8px">
@@ -1693,35 +1952,29 @@ function leerCondiciones(root) {
   const v = (n) => ($(`[name="${n}"]`, root)?.value ?? "").trim();
   return {
     luz: { opcion: v("luzOpcion") || "D", cuota: v("luzCuota"), tope: v("luzTope") },
-    agua: { opcion: v("aguaOpcion") || "cuota", cuota: v("aguaCuota") }
+    agua: leerSuministro(root, "agua"),
+    wifi: leerSuministro(root, "wifi")
   };
 }
 async function vistaPiso(id) {
   await leerAjustes();
   const nuevo = id === "nuevo";
-  const p2 = nuevo ? { plantilla: "habitacion", ciudad: "", luz: { opcion: "D" }, agua: { opcion: "incluida" } } : (await getDoc(D("pisos", id))).data();
+  const p2 = nuevo ? { plantilla: "habitacion", ciudad: "", luz: { opcion: "D" }, agua: { opcion: "incluida" }, wifi: { opcion: "incluida" } } : (await getDoc(D("pisos", id))).data();
   if (!p2) return pintar(`${cabVolver("Piso no encontrado", "", "#/pisos")}`, "pisos");
   pintar(`${cabVolver(nuevo ? "Nuevo piso" : p2.nombre, "Ficha del piso", "#/pisos")}
     <form class="seccion" id="f">
       ${campo("Nombre corto", "nombre", p2.nombre, 'placeholder="Piso Centro"')}
       ${campo("Direcci\xF3n completa", "direccion", p2.direccion, 'placeholder="Calle, n\xFAmero, piso, CP y ciudad"')}
       ${campo("Ciudad donde se firma", "ciudad", p2.ciudad)}
-      <div class="eti-campo">Tipo de contrato</div>
-      ${segmento("plantilla", Object.entries(PLANTILLAS), p2.plantilla)}
-      <div data-solo="habitacion piso_entero">
-        ${campo("N\xFAmero de habitaciones", "numHabitaciones", p2.numHabitaciones || (p2.habitaciones || []).length || "", 'type="number" min="1" max="20" inputmode="numeric" placeholder="4"')}
-      </div>
+      ${selectorTipo(p2.plantilla || "habitacion")}
+      ${campo("N\xFAmero de habitaciones", "numHabitaciones", p2.numHabitaciones || (p2.habitaciones || []).length || "", 'type="number" min="1" max="20" inputmode="numeric" placeholder="4"')}
       <label class="campo">Descripci\xF3n de la vivienda<textarea name="descripcion" placeholder="Con tres dormitorios, cocina con lavadero, sal\xF3n y ba\xF1o">${esc(p2.descripcion || "")}</textarea></label>
       ${campo("Renta habitual (\u20AC)", "renta", p2.renta ?? "", 'inputmode="decimal"')}
       ${modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p2.carpetaFacturas || "", 'placeholder="Facturas piso centro"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p2.carpetaFacturas || "")}">`}
-      <div data-solo="habitacion piso_entero" class="seccion" style="padding:0">
-        ${camposLuz(p2.luz)}
-        <p class="ayuda">El agua y el wifi van incluidos en la renta.</p>
-      </div>
-      <div data-solo="larga_duracion" class="seccion" style="padding:0">
-        <div class="eti-campo">Luz</div>
-        <div class="tarjeta"><div class="nombre" style="font-size:14px">Cambio de titularidad</div><div class="meta">El inquilino pone la luz a su nombre.</div></div>
-        ${camposAgua(p2.agua)}
+      ${camposLuz(p2.luz || { opcion: p2.plantilla === "larga_duracion" ? "A" : "D" })}
+      ${camposSuministro("agua", "Agua", p2.agua || { opcion: p2.plantilla === "larga_duracion" ? "cuota" : "incluida" })}
+      ${camposSuministro("wifi", "Internet (wifi)", p2.wifi || { opcion: p2.plantilla === "larga_duracion" ? "titularidad" : "incluida" })}
+      <div data-solo-piso class="seccion" style="padding:0">
         <div class="eti-campo">Gastos de la vivienda</div>
         <p class="ayuda">Por ley los paga el propietario, salvo que pact\xE9is que los asuma el inquilino indicando su importe anual (art. 20 LAU).</p>
         ${camposGasto("comunidad", "Comunidad de propietarios", p2.gastos?.comunidad)}
@@ -1729,10 +1982,10 @@ async function vistaPiso(id) {
         ${camposGasto("basura", "Tasa de basura", p2.gastos?.basura)}
       </div>
       <div class="eti-campo">Fotos del piso</div>
-      <div class="tarjeta"><div class="fila"><div><div class="nombre" id="fotos-nombre">${esc(p2.fotosNombre || "Sin PDF de fotos")}</div>
-        <div class="meta">Se a\xF1ade al final de cada contrato</div></div>
+      <div class="tarjeta"><div class="fila"><div><div class="nombre" id="fotos-nombre">${esc(p2.fotosNombre || "Sin fotos")}</div>
+        <div class="meta">Fotos (JPG o PNG) o un PDF. Se a\xF1aden al final de cada contrato.</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <label class="btn secundario" style="min-height:40px">Subir PDF<input type="file" accept="application/pdf" id="subir-fotos" hidden></label>
+          <label class="btn secundario" style="min-height:40px">Subir<input type="file" accept="application/pdf,image/jpeg,image/png,image/*" multiple id="subir-fotos" hidden></label>
           ${modo() === "completo" ? '<button type="button" class="btn secundario" id="elegir-fotos" style="min-height:40px">Elegir en Drive</button>' : ""}
         </div></div></div>
       <input type="hidden" name="fotosDriveId" value="${esc(p2.fotosDriveId || "")}">
@@ -1745,27 +1998,48 @@ async function vistaPiso(id) {
   const f = $("#f");
   activarSegmentos(f);
   activarLuz(f);
+  activarSuministros(f);
+  activarSelectorTipo(f, (pl) => {
+    const v = (n) => (f[n]?.value ?? "").trim();
+    const cond = leerCondiciones(f);
+    const gastos = {};
+    for (const g of ["comunidad", "ibi", "basura"]) gastos[g] = { quien: v(`gasto_${g}`) || "arrendador", importe: v(`gasto_${g}_importe`) };
+    return datosModelo(pl, {
+      nombre: v("nombre"),
+      direccion: v("direccion"),
+      ciudad: v("ciudad"),
+      descripcion: v("descripcion"),
+      numHabitaciones: v("numHabitaciones"),
+      renta: v("renta"),
+      ...cond,
+      gastos: porHabitacion(pl) ? {} : gastos
+    });
+  });
   const ajustarTipo = () => {
     const t = f.plantilla.value;
-    $$("[data-solo]", f).forEach((el) => el.style.display = el.dataset.solo.split(" ").includes(t) ? "" : "none");
+    $$("[data-solo-piso]", f).forEach((el) => el.style.display = porHabitacion(t) ? "none" : "");
     $$("[data-gasto]", f).forEach((g) => g.querySelector("[data-importe]").style.display = g.querySelector("input[type=hidden]").value === "arrendatario" ? "" : "none");
   };
   f.addEventListener("change", ajustarTipo);
   f.addEventListener("click", () => setTimeout(ajustarTipo, 0));
   ajustarTipo();
   $("#subir-fotos").onchange = async (e) => {
-    const archivo = e.target.files[0];
-    if (!archivo) return;
+    const archivos = [...e.target.files];
+    if (!archivos.length) return;
+    const pdfs = archivos.filter((a) => a.type === "application/pdf" || /\.pdf$/i.test(a.name));
+    if (pdfs.length && archivos.length > 1) return aviso("Sube un \xFAnico PDF, o varias fotos", true);
     try {
-      aviso("Subiendo fotos\u2026");
+      aviso(pdfs.length ? "Subiendo fotos\u2026" : `Preparando ${archivos.length} foto${archivos.length > 1 ? "s" : ""}\u2026`);
+      const bytes = pdfs.length ? await archivos[0].arrayBuffer() : await imagenesAPdf(archivos);
+      const nombre = pdfs.length ? archivos[0].name : `Fotos_${slug(f.nombre.value || "piso")}.pdf`;
       const ajustes = await leerAjustes();
       const raiz = await raizDrive(ajustes);
       if (!raiz) return aviso("Configura Google Drive en Ajustes", true);
       const carpeta = await asegurarCarpeta(["Fotos de los pisos"], raiz);
-      const r = await subirPdf(await archivo.arrayBuffer(), archivo.name, carpeta);
+      const r = await subirPdf(bytes, nombre, carpeta);
       f.fotosDriveId.value = r.id;
-      f.fotosNombre.value = archivo.name;
-      $("#fotos-nombre").textContent = archivo.name;
+      f.fotosNombre.value = pdfs.length ? nombre : `${archivos.length} foto${archivos.length > 1 ? "s" : ""} (${nombre})`;
+      $("#fotos-nombre").textContent = f.fotosNombre.value;
       aviso("Fotos subidas. Pulsa Guardar.");
     } catch (err) {
       aviso("No se pudo subir: " + err.message, true);
@@ -1787,21 +2061,23 @@ async function vistaPiso(id) {
     if (!v("nombre") || !v("direccion")) return aviso("Faltan el nombre y la direcci\xF3n", true);
     const tipo = v("plantilla");
     const n = Math.min(20, Math.max(0, parseInt(v("numHabitaciones"), 10) || 0));
-    if (tipo !== "larga_duracion" && !n) return aviso("Indica el n\xFAmero de habitaciones", true);
+    if (porHabitacion(tipo) && !n) return aviso("Indica el n\xFAmero de habitaciones", true);
     const cond = leerCondiciones(f);
-    if (tipo === "larga_duracion") cond.luz = { opcion: "A" };
+    if ((cond.luz.opcion === "B" || cond.luz.opcion === "C") && !cond.luz.cuota) return aviso("Falta la cuota fija de la luz", true);
+    if (cond.agua.opcion === "cuota" && !cond.agua.cuota) return aviso("Falta la cuota fija del agua", true);
+    if (cond.wifi.opcion === "cuota" && !cond.wifi.cuota) return aviso("Falta la cuota fija del wifi", true);
     const gastos = {};
     for (const g of ["comunidad", "ibi", "basura"]) gastos[g] = { quien: v(`gasto_${g}`) || "arrendador", importe: v(`gasto_${g}_importe`) };
-    if (tipo === "larga_duracion" && Object.values(gastos).some((g) => g.quien === "arrendatario" && !g.importe))
+    if (!porHabitacion(tipo) && Object.values(gastos).some((g) => g.quien === "arrendatario" && !g.importe))
       return aviso("Indica el importe anual de los gastos que paga el inquilino", true);
     const datos = {
       nombre: v("nombre"),
       direccion: v("direccion"),
       ciudad: v("ciudad"),
       plantilla: tipo,
-      numHabitaciones: tipo === "larga_duracion" ? 0 : n,
-      habitaciones: tipo === "larga_duracion" ? [] : Array.from({ length: n }, (_, i) => String(i + 1)),
-      gastos: tipo === "larga_duracion" ? gastos : {},
+      numHabitaciones: n,
+      habitaciones: Array.from({ length: n }, (_, i) => String(i + 1)),
+      gastos: porHabitacion(tipo) ? {} : gastos,
       descripcion: v("descripcion"),
       renta: v("renta"),
       carpetaFacturas: v("carpetaFacturas"),
@@ -1834,17 +2110,21 @@ async function vistaNueva() {
   const formulario = () => {
     const pl = $("[name=plantilla]")?.value || piso.plantilla || "habitacion";
     const f0 = fechasPorDefecto(pl);
+    const curso = `${f0.inicio.slice(0, 4)}-${f0.fin ? f0.fin.slice(0, 4) : ""}`;
     return `
-      <div class="eti-campo">Modalidad</div>
-      ${segmento("plantilla", Object.entries(PLANTILLAS), pl)}
-      ${pl === "habitacion" ? `<div class="rejilla">
+      ${selectorTipo(pl)}
+      ${porHabitacion(pl) ? `<div class="rejilla">
           <label class="campo">Habitaci\xF3n<select name="habitacion">${(piso.habitaciones?.length ? piso.habitaciones : ["1", "2", "3", "4"]).map((h2) => `<option>${esc(h2)}</option>`).join("")}</select></label>
           ${campo("Renta mensual (\u20AC)", "renta", piso.renta ?? "", 'inputmode="decimal"')}</div>` : `<div class="rejilla">${campo("Renta mensual (\u20AC)", "renta", piso.renta ?? "", 'inputmode="decimal"')}
-          ${campo("N\xBA de inquilinos", "plazas", pl === "piso_entero" ? 3 : 1, 'inputmode="numeric"')}</div>`}
-      ${campo("Fianza (\u20AC) \u2014 vac\xEDo = una mensualidad", "fianza", "", 'inputmode="decimal"')}
+          ${campo("N\xBA de inquilinos", "plazas", pl === "larga_duracion" ? 1 : Math.max(1, parseInt(piso.numHabitaciones, 10) || 1), 'inputmode="numeric"')}</div>`}
+      ${campo(`Fianza (\u20AC) \u2014 vac\xEDo = ${esTemporada(pl) ? "dos mensualidades" : "una mensualidad"}`, "fianza", "", 'inputmode="decimal"')}
       <div class="rejilla">${campo("Desde", "fechaInicio", f0.inicio, 'type="date"')}
         ${pl === "larga_duracion" ? campo("Entrega de llaves", "fechaEntrega", f0.inicio, 'type="date"') : campo("Hasta", "fechaFin", f0.fin, 'type="date"')}</div>
-      ${pl === "larga_duracion" ? camposAgua(piso.agua) : camposLuz(piso.luz)}`;
+      ${esTemporada(pl) ? `${campo("Motivo de la temporada (aparece en el contrato)", "motivoTemporada", `la realizaci\xF3n de estudios durante el curso ${curso}`)}
+        <p class="ayuda">Por ejemplo: \xABun contrato de trabajo temporal en la ciudad\xBB, \xABla realizaci\xF3n de obras en su vivienda habitual\xBB.</p>` : ""}
+      <div class="tarjeta"><div class="eti-campo" style="margin:0">Suministros</div>
+        <div class="meta">${esc(resumenSuministros(piso))}</div>
+        <div class="meta"><a href="#/piso/${piso.id}">Cambiar en la ficha del piso</a></div></div>`;
   };
   pintar(`${cabVolver("Nuevo inquilino")}
     <div class="seccion">
@@ -1858,7 +2138,19 @@ async function vistaNueva() {
   const repintar = () => {
     f.innerHTML = formulario();
     activarSegmentos(f);
-    if ($("#opciones-luz", f)) activarLuz(f);
+    activarSelectorTipo(f, (pl) => datosModelo(pl, {
+      nombre: piso.nombre,
+      direccion: piso.direccion,
+      ciudad: piso.ciudad,
+      descripcion: piso.descripcion,
+      numHabitaciones: piso.numHabitaciones,
+      renta: f.renta?.value || piso.renta,
+      motivoTemporada: f.motivoTemporada?.value || "",
+      luz: piso.luz,
+      agua: piso.agua,
+      wifi: piso.wifi,
+      gastos: porHabitacion(pl) ? {} : piso.gastos
+    }));
   };
   repintar();
   f.addEventListener("change", (e) => {
@@ -1877,8 +2169,8 @@ async function vistaNueva() {
     const pl = v("plantilla");
     if (!v("renta")) return aviso("Falta la renta", true);
     if (!v("fechaInicio")) return aviso("Falta la fecha de inicio", true);
-    const { luz, agua } = leerCondiciones(f);
-    if (pl !== "larga_duracion" && (luz.opcion === "B" || luz.opcion === "C") && !luz.cuota) return aviso("Falta la cuota de luz", true);
+    if (pl !== "larga_duracion" && !v("fechaFin")) return aviso("Falta la fecha de fin", true);
+    if (esTemporada(pl) && !v("motivoTemporada")) return aviso("Indica el motivo de la temporada", true);
     const token2 = nuevoToken();
     const inv = {
       pisoId: piso.id,
@@ -1886,15 +2178,17 @@ async function vistaNueva() {
       pisoDireccion: piso.direccion,
       ciudad: piso.ciudad || "",
       plantilla: pl,
-      habitacion: pl === "habitacion" ? v("habitacion") : "",
-      plazas: pl === "habitacion" ? 1 : parseInt(v("plazas") || "1", 10),
+      habitacion: porHabitacion(pl) ? v("habitacion") : "",
+      plazas: porHabitacion(pl) ? 1 : parseInt(v("plazas") || "1", 10),
       renta: v("renta"),
       fianza: v("fianza"),
       fechaInicio: v("fechaInicio"),
       fechaFin: pl === "larga_duracion" ? "" : v("fechaFin"),
       fechaEntrega: pl === "larga_duracion" ? v("fechaEntrega") : "",
-      luz: pl === "larga_duracion" ? { opcion: "A" } : luz,
-      agua: pl === "larga_duracion" ? agua : { opcion: "incluida" },
+      motivoTemporada: esTemporada(pl) ? v("motivoTemporada") : "",
+      luz: piso.luz || { opcion: pl === "larga_duracion" ? "A" : "D" },
+      agua: piso.agua || { opcion: pl === "larga_duracion" ? "cuota" : "incluida" },
+      wifi: piso.wifi || { opcion: pl === "larga_duracion" ? "titularidad" : "incluida" },
       estado: "abierta",
       respuestas: 0,
       creada: serverTimestamp(),
@@ -1958,7 +2252,9 @@ async function vistaInvitacion(id) {
   const condiciones2 = [
     PLANTILLAS[inv.plantilla] + (inv.habitacion ? ` \xB7 habitaci\xF3n ${inv.habitacion}` : ""),
     `Renta ${euros(inv.renta)}${inv.fianza ? ` \xB7 fianza ${euros(inv.fianza)}` : ""}`,
-    inv.plantilla === "larga_duracion" ? `Desde el ${fechaLarga(inv.fechaInicio)} \xB7 agua ${inv.agua?.opcion === "cuota" ? euros(inv.agua.cuota) + "/mes" : "incluida"}` : `Del ${fechaLarga(inv.fechaInicio)} al ${fechaLarga(inv.fechaFin)} \xB7 luz: ${LUZ[inv.luz?.opcion]?.t || ""}${inv.luz?.cuota ? " " + euros(inv.luz.cuota) : ""}`
+    inv.plantilla === "larga_duracion" ? `Desde el ${fechaLarga(inv.fechaInicio)}` : `Del ${fechaLarga(inv.fechaInicio)} al ${fechaLarga(inv.fechaFin)}`,
+    resumenSuministros(inv),
+    ...inv.motivoTemporada ? [`Motivo: ${inv.motivoTemporada}`] : []
   ];
   pintar(`${cabVolver(inv.pisoNombre, "Invitaci\xF3n", "#/")}
     <div class="seccion">
@@ -2056,11 +2352,11 @@ async function vistaInvitacion(id) {
       aviso("Completa primero vuestros DNIs e IBAN en Ajustes", true);
       return;
     }
-    if (inv.plazas && resps.length < inv.plazas && inv.plantilla !== "habitacion" && !preguntar(`Solo han rellenado ${resps.length} de ${inv.plazas}. \xBFGenerar el contrato igualmente?`)) return;
+    if (inv.plazas && resps.length < inv.plazas && !porHabitacion(inv.plantilla) && !preguntar(`Solo han rellenado ${resps.length} de ${inv.plazas}. \xBFGenerar el contrato igualmente?`)) return;
     boton.disabled = true;
     boton.textContent = "Generando\u2026";
     try {
-      const grupos = inv.plantilla === "habitacion" ? resps.map((r) => [r]) : [resps];
+      const grupos = porHabitacion(inv.plantilla) ? resps.map((r) => [r]) : [resps];
       const ids = [];
       for (const grupo of grupos) ids.push(await generarYGuardar(id, inv, grupo, ajustes, $("#fecha-firma").value));
       await updateDoc(D("invitaciones", id), { estado: "cerrada" });
@@ -2103,6 +2399,8 @@ function datosContrato(inv, grupo, ajustes, fechaFirma, piso, conFotos) {
     fechaEntrega: inv.fechaEntrega,
     luz: inv.luz,
     agua: inv.agua,
+    wifi: inv.wifi,
+    motivoTemporada: inv.motivoTemporada || "",
     conFotos
   };
 }
@@ -2179,7 +2477,7 @@ async function generarYGuardar(invId, inv, grupo, ajustes, fechaFirma) {
   const fotos = await fotosDelPiso(piso);
   const datos = datosContrato(inv, grupo, ajustes, fechaFirma || hoyISO(), piso, !!fotos);
   const bytes = await construirPdf(generarContrato(datos), fotos);
-  const quien = inv.plantilla === "habitacion" ? slug(grupo[0].nombre) : inv.plantilla === "piso_entero" ? "Completo" : slug(grupo[0].nombre);
+  const quien = grupo.length > 1 ? "Completo" : slug(grupo[0].nombre);
   const nombreArchivo = `Contrato_${slug(inv.pisoNombre)}${inv.habitacion ? "_Hab" + slug(inv.habitacion) : ""}_${quien}_${cursoDe(inv)}.pdf`;
   let enDrive = [];
   try {
@@ -2753,13 +3051,13 @@ async function vistaInquilino(token2) {
   const esEstudiante = inv.plantilla !== "larga_duracion";
   if (!borrador.avales) borrador.avales = esEstudiante ? [{ parentesco: "Madre" }, { parentesco: "Padre" }] : [];
   let paso = 1;
-  const sub = `${inv.pisoNombre}${inv.habitacion ? " \xB7 Habitaci\xF3n " + inv.habitacion : inv.plantilla === "piso_entero" ? " \xB7 Piso entero" : ""}`;
+  const sub = `${inv.pisoNombre}${inv.habitacion ? " \xB7 Habitaci\xF3n " + inv.habitacion : !porHabitacion(inv.plantilla) && inv.plantilla !== "larga_duracion" ? " \xB7 Piso entero" : ""}`;
   const hero = (titulo, texto) => `<div class="hero"><div class="eti">${esc(sub)}</div><h1>${titulo}</h1><p>${texto}</p>
     <div class="progreso">${[1, 2, 3].map((n) => `<span class="${n <= paso ? "on" : ""}"></span>`).join("")}</div>
     <p style="font-size:12px">Paso ${paso} de 3</p></div>`;
   const mostrar = () => {
     if (paso === 1) {
-      pintar(`${hero("Tus datos para el contrato", inv.plantilla === "piso_entero" ? "Cada compa\xF1ero rellena sus propios datos con este mismo enlace." : "Solo te llevar\xE1 un par de minutos.")}
+      pintar(`${hero("Tus datos para el contrato", (inv.plazas || 1) > 1 ? "Cada compa\xF1ero rellena sus propios datos con este mismo enlace." : "Solo te llevar\xE1 un par de minutos.")}
         <form class="seccion" id="f">${camposPersona("p_", borrador, { contacto: true, domicilio: true })}</form>
         <div class="acciones"><button class="btn primario ancho" id="sig">Siguiente</button></div>`);
       const f = $("#f");
