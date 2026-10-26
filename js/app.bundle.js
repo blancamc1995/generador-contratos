@@ -1,20 +1,23 @@
 // js/firebase-config.js
 var CONFIG = {
   firebase: {
-    apiKey: "AIzaSyA_Py8ZCWaEZZdnGS2ZHuQTnW-EefjROmA",
-    authDomain: "contratos-pisos.firebaseapp.com",
-    projectId: "contratos-pisos",
-    storageBucket: "contratos-pisos.firebasestorage.app",
-    messagingSenderId: "221718655510",
-    appId: "1:221718655510:web:386338d202aa7327aefb37"
+    apiKey: "AIzaSyABnpa7bshQxa7uGCiCCR86mixGTeeA3P4",
+    authDomain: "gestion-alquileres-35943.firebaseapp.com",
+    projectId: "gestion-alquileres-35943",
+    storageBucket: "gestion-alquileres-35943.firebasestorage.app",
+    messagingSenderId: "772414745528",
+    appId: "1:772414745528:web:32bf23743b3fefaff57d4d"
   },
   // ID de cliente OAuth "Web client (auto created by Google Service)"
   // de Google Cloud → APIs y servicios → Credenciales.
-  googleClientId: "221718655510-vncb0h6rbu7fpe4k1grva7j07f9v5oir.apps.googleusercontent.com",
+  googleClientId: "772414745528-r4uccjhq9j1acrnjm3p9idgsu05ujbkj.apps.googleusercontent.com",
   // Número del proyecto (Configuración del proyecto en Firebase → General).
-  googleProjectNumber: "221718655510",
+  googleProjectNumber: "772414745528",
   // Nombre de la aplicación (portada, textos legales, pestaña).
   nombreApp: "Contratos de alquiler",
+  // Permitir el modo «Mis carpetas» de Drive (permiso de todo el Drive).
+  // Exige que Google audite la app, así que en la versión general va apagado.
+  driveCompleto: false,
   // Carpeta que crea la app en el Drive de cada usuario (modo «carpeta propia»).
   carpetaRaiz: "Alquileres",
   // Titular del servicio: aparece en el aviso legal y la política de privacidad.
@@ -28,7 +31,7 @@ var CONFIG = {
   },
   versionTextos: "1",
   // Dirección pública de la app (para el enlace a la demo).
-  urlApp: "https://blancamc1995.github.io/gestion-alquileres/",
+  urlApp: "https://gestion-alquileres-35943.web.app/",
   // Pago de la beta. Si rellenas precio y bizum, la pantalla de espera
   // muestra cómo pagar; después activas la cuenta en Ajustes → Administración.
   pago: { precio: "", bizum: "", duracion: "un a\xF1o" }
@@ -882,7 +885,7 @@ var SCOPES = {
 };
 var MODO = "propia";
 function configurar(modo2) {
-  MODO = modo2 === "completo" ? "completo" : "propia";
+  MODO = modo2 === "completo" && CONFIG.driveCompleto !== false ? "completo" : "propia";
 }
 function modo() {
   return MODO;
@@ -3222,8 +3225,8 @@ async function vistaBienvenida() {
         <div class="seccion">
           <button type="button" class="opcion-luz ${datos.modoDrive === "propia" ? "on" : ""}" data-modo="propia"><b>Crear una carpeta \xAB${esc(CONFIG.carpetaRaiz || "Alquileres")}\xBB (recomendado)</b>
             <span>La app solo accede a esa carpeta. Dentro crea Renta AAAA / Contratos / Piso y Renta AAAA / Pisos facturas / Piso.</span></button>
-          <button type="button" class="opcion-luz ${datos.modoDrive === "completo" ? "on" : ""}" data-modo="completo"><b>Usar carpetas que ya tengo</b>
-            <span>Por ejemplo, una carpeta \xABRentas\xBB con tus Renta 2025, Renta 2026\u2026 Requiere permiso para ver tu Drive.</span></button>
+          ${CONFIG.driveCompleto === false ? "" : `<button type="button" class="opcion-luz ${datos.modoDrive === "completo" ? "on" : ""}" data-modo="completo"><b>Usar carpetas que ya tengo</b>
+            <span>Por ejemplo, una carpeta \xABRentas\xBB con tus Renta 2025, Renta 2026\u2026 Requiere permiso para ver tu Drive.</span></button>`}
           <button class="btn salvia" id="conectar">Conectar Google Drive</button>
           <p class="ayuda" id="estado-drive">${a.carpetaDriveNombre ? "Conectado: " + esc(a.carpetaDriveNombre) : "Puedes hacerlo ahora o m\xE1s tarde desde Ajustes."}</p>
         </div>
@@ -3318,7 +3321,7 @@ async function vistaAjustes() {
           <button type="button" class="btn peligro" data-borrar-modelo="${pl}" style="min-height:36px">Quitar cambios</button></div></div>`).join("")}
 
       <div class="eti-campo">Google Drive</div>
-      ${segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
+      ${CONFIG.driveCompleto === false ? '<input type="hidden" name="modoDrive" value="propia">' : segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin conectar")}</div>
         <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
         <button type="button" class="btn secundario" id="elegir">${(a.modoDrive || "propia") === "completo" ? "Elegir" : "Conectar"}</button></div></div>

@@ -15,7 +15,7 @@ const SCOPES = {
   completo: "https://www.googleapis.com/auth/drive",
 };
 let MODO = "propia";
-export function configurar(modo) { MODO = modo === "completo" ? "completo" : "propia"; }
+export function configurar(modo) { MODO = modo === "completo" && CONFIG.driveCompleto !== false ? "completo" : "propia"; }
 export function modo() { return MODO; }
 const tokens = {};
 let token = null, caduca = 0;

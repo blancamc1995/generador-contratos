@@ -1776,8 +1776,8 @@ async function vistaBienvenida() {
         <div class="seccion">
           <button type="button" class="opcion-luz ${datos.modoDrive === "propia" ? "on" : ""}" data-modo="propia"><b>Crear una carpeta «${esc(CONFIG.carpetaRaiz || "Alquileres")}» (recomendado)</b>
             <span>La app solo accede a esa carpeta. Dentro crea Renta AAAA / Contratos / Piso y Renta AAAA / Pisos facturas / Piso.</span></button>
-          <button type="button" class="opcion-luz ${datos.modoDrive === "completo" ? "on" : ""}" data-modo="completo"><b>Usar carpetas que ya tengo</b>
-            <span>Por ejemplo, una carpeta «Rentas» con tus Renta 2025, Renta 2026… Requiere permiso para ver tu Drive.</span></button>
+          ${CONFIG.driveCompleto === false ? "" : `<button type="button" class="opcion-luz ${datos.modoDrive === "completo" ? "on" : ""}" data-modo="completo"><b>Usar carpetas que ya tengo</b>
+            <span>Por ejemplo, una carpeta «Rentas» con tus Renta 2025, Renta 2026… Requiere permiso para ver tu Drive.</span></button>`}
           <button class="btn salvia" id="conectar">Conectar Google Drive</button>
           <p class="ayuda" id="estado-drive">${a.carpetaDriveNombre ? "Conectado: " + esc(a.carpetaDriveNombre) : "Puedes hacerlo ahora o más tarde desde Ajustes."}</p>
         </div>
@@ -1858,7 +1858,7 @@ async function vistaAjustes() {
           <button type="button" class="btn peligro" data-borrar-modelo="${pl}" style="min-height:36px">Quitar cambios</button></div></div>`).join("")}
 
       <div class="eti-campo">Google Drive</div>
-      ${segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
+      ${CONFIG.driveCompleto === false ? '<input type="hidden" name="modoDrive" value="propia">' : segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin conectar")}</div>
         <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
         <button type="button" class="btn secundario" id="elegir">${(a.modoDrive || "propia") === "completo" ? "Elegir" : "Conectar"}</button></div></div>
