@@ -35,7 +35,7 @@ export const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
 // ================= modo demostración =================
 
 function crearDemo() {
-  const CLAVE = "contratos-demo-v4";
+  const CLAVE = "contratos-demo-v5";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -129,28 +129,28 @@ function semilla() {
       { tratamiento: "D.", nombre: "Propietario Ejemplo Uno", tipoDoc: "DNI", numDoc: "00000000T" },
       { tratamiento: "Dña.", nombre: "Propietaria Ejemplo Dos", tipoDoc: "DNI", numDoc: "00000001R" },
     ],
-    domicilio: "Calle Ejemplo, 1, 14000 Córdoba",
+    domicilio: "Calle Mayor, 1, 46001 Valencia",
     iban: "ES00 0000 0000 0000 0000 0000",
-    ciudadFirma: "Córdoba",
+    ciudadFirma: "Valencia",
     carpetaDriveId: "demo-rentas", carpetaDriveNombre: "Rentas (demo)",
   };
-  m["pisos/lope"] = { nombre: "Lope de Sosa", direccion: "Calle Ejemplo, 2, 14000 Córdoba", ciudad: "Córdoba",
-    plantilla: "habitacion", habitaciones: ["1", "2", "3", "4"], renta: "262", luz: { opcion: "C", cuota: "22.5", tope: "" }, agua: { opcion: "incluida" } };
-  m["pisos/priego"] = { nombre: "Maestro Priego", direccion: "Calle Ejemplo, 3, 14000 Córdoba", ciudad: "Córdoba",
-    plantilla: "habitacion", habitaciones: ["1", "2", "3", "4"], renta: "300", luz: { opcion: "D", cuota: "", tope: "200" }, agua: { opcion: "incluida" } };
-  m["pisos/alderetes"] = { nombre: "Alderetes", direccion: "Calle Ejemplo, 4, 14000 Córdoba", ciudad: "Córdoba",
-    plantilla: "piso_entero", habitaciones: [], renta: "750", luz: { opcion: "A" }, agua: { opcion: "incluida" } };
-  m["pisos/ciudadreal"] = { nombre: "Ciudad Real", direccion: "Calle Ejemplo, 5, 13000 Ciudad Real", ciudad: "Ciudad Real",
-    plantilla: "larga_duracion", habitaciones: [], renta: "550", descripcion: "con tres dormitorios, cocina con lavadero, salón y baño",
-    luz: { opcion: "A" }, agua: { opcion: "cuota", cuota: "8" }, carpetaFacturas: "Piso ciudad real" };
-  m["invitaciones/demoPriego2"] = {
-    pisoId: "priego", pisoNombre: "Maestro Priego", pisoDireccion: m["pisos/priego"].direccion, ciudad: "Córdoba",
-    plantilla: "habitacion", habitacion: "2", plazas: 1, renta: "300", fianza: "", fechaInicio: "2026-09-01", fechaFin: "2027-07-31",
+  m["pisos/centro"] = { nombre: "Piso Centro", direccion: "Calle de los Olivos, 12, 2º A, 46002 Valencia", ciudad: "Valencia",
+    plantilla: "habitacion", habitaciones: ["1", "2", "3", "4"], renta: "320", luz: { opcion: "C", cuota: "25", tope: "" }, agua: { opcion: "incluida" } };
+  m["pisos/universidad"] = { nombre: "Piso Universidad", direccion: "Avenida del Campus, 8, 3º B, 46010 Valencia", ciudad: "Valencia",
+    plantilla: "habitacion", habitaciones: ["1", "2", "3", "4"], renta: "290", luz: { opcion: "D", cuota: "", tope: "180" }, agua: { opcion: "incluida" } };
+  m["pisos/atico"] = { nombre: "Ático Jardines", direccion: "Plaza de los Jardines, 3, 5º, 46004 Valencia", ciudad: "Valencia",
+    plantilla: "piso_entero", habitaciones: [], renta: "900", luz: { opcion: "A" }, agua: { opcion: "incluida" } };
+  m["pisos/rio"] = { nombre: "Casa del Río", direccion: "Calle del Río, 21, 50003 Zaragoza", ciudad: "Zaragoza",
+    plantilla: "larga_duracion", habitaciones: [], renta: "680", descripcion: "con dos dormitorios, cocina, salón, baño y terraza",
+    luz: { opcion: "A" }, agua: { opcion: "cuota", cuota: "10" } };
+  m["invitaciones/demoInvitacion1"] = {
+    pisoId: "universidad", pisoNombre: "Piso Universidad", pisoDireccion: m["pisos/universidad"].direccion, ciudad: "Valencia",
+    plantilla: "habitacion", habitacion: "2", plazas: 1, renta: "290", fianza: "", fechaInicio: "2026-09-01", fechaFin: "2027-07-31",
     fechaEntrega: "", luz: { opcion: "D", tope: "200" }, agua: { opcion: "incluida" }, estado: "abierta", creada: ts(2), creadaPor: "demo",
   };
-  m["invitaciones/demoPriego2/respuestas/r1"] = {
+  m["invitaciones/demoInvitacion1/respuestas/r1"] = {
     tratamiento: "Dña.", nombre: "Lucía Ejemplo Prueba", tipoDoc: "DNI", numDoc: "12345678Z",
-    domicilio: "Calle Mayor, 1, 23001 Jaén", telefono: "600 000 000", email: "lucia@ejemplo.com",
+    domicilio: "Calle del Sol, 5, 30001 Murcia", telefono: "600 000 000", email: "lucia@ejemplo.com",
     avales: [
       { tratamiento: "Dña.", nombre: "Ana Prueba Ejemplo", tipoDoc: "DNI", numDoc: "00000002W", parentesco: "Madre" },
       { tratamiento: "D.", nombre: "Luis Ejemplo Ejemplo", tipoDoc: "DNI", numDoc: "00000003A", parentesco: "Padre" },
@@ -160,11 +160,11 @@ function semilla() {
   // Todo vive dentro de la cuenta de demostración.
   const out = {};
   for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;
-  out["cuentas/demo/ajustes/general"].condiciones = { ccaa: "Andalucía", diaPago: 7, garantiaMeses: 0 };
+  out["cuentas/demo/ajustes/general"].condiciones = { ccaa: "Comunitat Valenciana", diaPago: 7, garantiaMeses: 0 };
   out["cuentas/demo/ajustes/general"].modoDrive = "propia";
-  out["cuentas/demo/invitaciones/demoPriego2"].arrendadores = "Propietario Ejemplo Uno y Propietaria Ejemplo Dos";
+  out["cuentas/demo/invitaciones/demoInvitacion1"].arrendadores = "Propietario Ejemplo Uno y Propietaria Ejemplo Dos";
   out["cuentas/demo"] = { nombre: "Demo", propietario: "demo", miembros: ["demo"], emailsMiembros: ["demo@ejemplo.com"], correos: { demo: "demo@ejemplo.com" }, plan: "prueba" };
   out["usuarios/demo"] = { cuentaId: "demo", email: "demo@ejemplo.com" };
-  out["enlaces/demoPriego2"] = { cuentaId: "demo" };
+  out["enlaces/demoInvitacion1"] = { cuentaId: "demo" };
   return out;
 }

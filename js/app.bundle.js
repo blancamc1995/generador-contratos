@@ -91,7 +91,7 @@ var {
   arrayUnion
 } = api;
 function crearDemo() {
-  const CLAVE = "contratos-demo-v4";
+  const CLAVE = "contratos-demo-v5";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -208,63 +208,62 @@ function semilla() {
       { tratamiento: "D.", nombre: "Propietario Ejemplo Uno", tipoDoc: "DNI", numDoc: "00000000T" },
       { tratamiento: "D\xF1a.", nombre: "Propietaria Ejemplo Dos", tipoDoc: "DNI", numDoc: "00000001R" }
     ],
-    domicilio: "Calle Ejemplo, 1, 14000 C\xF3rdoba",
+    domicilio: "Calle Mayor, 1, 46001 Valencia",
     iban: "ES00 0000 0000 0000 0000 0000",
-    ciudadFirma: "C\xF3rdoba",
+    ciudadFirma: "Valencia",
     carpetaDriveId: "demo-rentas",
     carpetaDriveNombre: "Rentas (demo)"
   };
-  m["pisos/lope"] = {
-    nombre: "Lope de Sosa",
-    direccion: "Calle Ejemplo, 2, 14000 C\xF3rdoba",
-    ciudad: "C\xF3rdoba",
+  m["pisos/centro"] = {
+    nombre: "Piso Centro",
+    direccion: "Calle de los Olivos, 12, 2\xBA A, 46002 Valencia",
+    ciudad: "Valencia",
     plantilla: "habitacion",
     habitaciones: ["1", "2", "3", "4"],
-    renta: "262",
-    luz: { opcion: "C", cuota: "22.5", tope: "" },
+    renta: "320",
+    luz: { opcion: "C", cuota: "25", tope: "" },
     agua: { opcion: "incluida" }
   };
-  m["pisos/priego"] = {
-    nombre: "Maestro Priego",
-    direccion: "Calle Ejemplo, 3, 14000 C\xF3rdoba",
-    ciudad: "C\xF3rdoba",
+  m["pisos/universidad"] = {
+    nombre: "Piso Universidad",
+    direccion: "Avenida del Campus, 8, 3\xBA B, 46010 Valencia",
+    ciudad: "Valencia",
     plantilla: "habitacion",
     habitaciones: ["1", "2", "3", "4"],
-    renta: "300",
-    luz: { opcion: "D", cuota: "", tope: "200" },
+    renta: "290",
+    luz: { opcion: "D", cuota: "", tope: "180" },
     agua: { opcion: "incluida" }
   };
-  m["pisos/alderetes"] = {
-    nombre: "Alderetes",
-    direccion: "Calle Ejemplo, 4, 14000 C\xF3rdoba",
-    ciudad: "C\xF3rdoba",
+  m["pisos/atico"] = {
+    nombre: "\xC1tico Jardines",
+    direccion: "Plaza de los Jardines, 3, 5\xBA, 46004 Valencia",
+    ciudad: "Valencia",
     plantilla: "piso_entero",
     habitaciones: [],
-    renta: "750",
+    renta: "900",
     luz: { opcion: "A" },
     agua: { opcion: "incluida" }
   };
-  m["pisos/ciudadreal"] = {
-    nombre: "Ciudad Real",
-    direccion: "Calle Ejemplo, 5, 13000 Ciudad Real",
-    ciudad: "Ciudad Real",
+  m["pisos/rio"] = {
+    nombre: "Casa del R\xEDo",
+    direccion: "Calle del R\xEDo, 21, 50003 Zaragoza",
+    ciudad: "Zaragoza",
     plantilla: "larga_duracion",
     habitaciones: [],
-    renta: "550",
-    descripcion: "con tres dormitorios, cocina con lavadero, sal\xF3n y ba\xF1o",
+    renta: "680",
+    descripcion: "con dos dormitorios, cocina, sal\xF3n, ba\xF1o y terraza",
     luz: { opcion: "A" },
-    agua: { opcion: "cuota", cuota: "8" },
-    carpetaFacturas: "Piso ciudad real"
+    agua: { opcion: "cuota", cuota: "10" }
   };
-  m["invitaciones/demoPriego2"] = {
-    pisoId: "priego",
-    pisoNombre: "Maestro Priego",
-    pisoDireccion: m["pisos/priego"].direccion,
-    ciudad: "C\xF3rdoba",
+  m["invitaciones/demoInvitacion1"] = {
+    pisoId: "universidad",
+    pisoNombre: "Piso Universidad",
+    pisoDireccion: m["pisos/universidad"].direccion,
+    ciudad: "Valencia",
     plantilla: "habitacion",
     habitacion: "2",
     plazas: 1,
-    renta: "300",
+    renta: "290",
     fianza: "",
     fechaInicio: "2026-09-01",
     fechaFin: "2027-07-31",
@@ -275,12 +274,12 @@ function semilla() {
     creada: ts(2),
     creadaPor: "demo"
   };
-  m["invitaciones/demoPriego2/respuestas/r1"] = {
+  m["invitaciones/demoInvitacion1/respuestas/r1"] = {
     tratamiento: "D\xF1a.",
     nombre: "Luc\xEDa Ejemplo Prueba",
     tipoDoc: "DNI",
     numDoc: "12345678Z",
-    domicilio: "Calle Mayor, 1, 23001 Ja\xE9n",
+    domicilio: "Calle del Sol, 5, 30001 Murcia",
     telefono: "600 000 000",
     email: "lucia@ejemplo.com",
     avales: [
@@ -292,12 +291,12 @@ function semilla() {
   };
   const out = {};
   for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;
-  out["cuentas/demo/ajustes/general"].condiciones = { ccaa: "Andaluc\xEDa", diaPago: 7, garantiaMeses: 0 };
+  out["cuentas/demo/ajustes/general"].condiciones = { ccaa: "Comunitat Valenciana", diaPago: 7, garantiaMeses: 0 };
   out["cuentas/demo/ajustes/general"].modoDrive = "propia";
-  out["cuentas/demo/invitaciones/demoPriego2"].arrendadores = "Propietario Ejemplo Uno y Propietaria Ejemplo Dos";
+  out["cuentas/demo/invitaciones/demoInvitacion1"].arrendadores = "Propietario Ejemplo Uno y Propietaria Ejemplo Dos";
   out["cuentas/demo"] = { nombre: "Demo", propietario: "demo", miembros: ["demo"], emailsMiembros: ["demo@ejemplo.com"], correos: { demo: "demo@ejemplo.com" }, plan: "prueba" };
   out["usuarios/demo"] = { cuentaId: "demo", email: "demo@ejemplo.com" };
-  out["enlaces/demoPriego2"] = { cuentaId: "demo" };
+  out["enlaces/demoInvitacion1"] = { cuentaId: "demo" };
   return out;
 }
 
@@ -1681,7 +1680,7 @@ async function vistaPiso(id) {
   if (!p2) return pintar(`${cabVolver("Piso no encontrado", "", "#/pisos")}`, "pisos");
   pintar(`${cabVolver(nuevo ? "Nuevo piso" : p2.nombre, "Ficha del piso", "#/pisos")}
     <form class="seccion" id="f">
-      ${campo("Nombre corto", "nombre", p2.nombre, 'placeholder="Lope de Sosa"')}
+      ${campo("Nombre corto", "nombre", p2.nombre, 'placeholder="Piso Centro"')}
       ${campo("Direcci\xF3n completa", "direccion", p2.direccion, 'placeholder="Calle, n\xFAmero, piso, CP y ciudad"')}
       ${campo("Ciudad donde se firma", "ciudad", p2.ciudad)}
       <div class="eti-campo">Tipo de contrato habitual</div>
@@ -1689,7 +1688,7 @@ async function vistaPiso(id) {
       ${campo("Habitaciones (separadas por comas)", "habitaciones", (p2.habitaciones || []).join(", "), 'placeholder="1, 2, 3, 4"')}
       <label class="campo">Descripci\xF3n (larga duraci\xF3n)<textarea name="descripcion" placeholder="Piso de tres dormitorios, cocina con lavadero, sal\xF3n y ba\xF1o">${esc(p2.descripcion || "")}</textarea></label>
       ${campo("Renta habitual (\u20AC)", "renta", p2.renta ?? "", 'inputmode="decimal"')}
-      ${modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p2.carpetaFacturas || "", 'placeholder="Piso ciudad real"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p2.carpetaFacturas || "")}">`}
+      ${modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p2.carpetaFacturas || "", 'placeholder="Facturas piso centro"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p2.carpetaFacturas || "")}">`}
       ${camposLuz(p2.luz)}
       ${camposAgua(p2.agua)}
       <div class="eti-campo">Fotos del piso</div>
@@ -3372,7 +3371,7 @@ async function vistaEspera(cuenta) {
       ${pago.precio && pago.bizum ? `<div class="tarjeta"><div class="nombre">Activa tu cuenta</div>
           <div class="meta" style="font-size:14px;line-height:1.5">Haz un Bizum de <b>${esc(pago.precio)} \u20AC</b> al <b>${esc(pago.bizum)}</b> con el concepto <b>${esc(usuario.email)}</b>. La activamos en menos de 24 horas${pago.duracion ? ` y tendr\xE1s acceso durante ${esc(pago.duracion)}` : ""}.</div></div>` : ""}
       ${enviada ? `<div class="tarjeta" style="background:var(--salvia-claro)"><div class="nombre" style="color:#3F4D37">Solicitud enviada</div>
-            <div class="meta" style="color:#3F4D37">El ${fechaCorta(enviada)}. Te avisaremos en ${esc(usuario.email)}.</div></div>` : `<label class="campo">Cu\xE9ntanos cu\xE1ntos pisos alquilas y c\xF3mo (opcional)<textarea id="mensaje" rows="3" placeholder="Por ejemplo: 3 pisos de estudiantes en C\xF3rdoba"></textarea></label>
+            <div class="meta" style="color:#3F4D37">El ${fechaCorta(enviada)}. Te avisaremos en ${esc(usuario.email)}.</div></div>` : `<label class="campo">Cu\xE9ntanos cu\xE1ntos pisos alquilas y c\xF3mo (opcional)<textarea id="mensaje" rows="3" placeholder="Por ejemplo: 3 pisos de estudiantes en Valencia"></textarea></label>
            <button class="btn primario" id="solicitar">Solicitar acceso</button>`}
       <a class="btn secundario" href="${esc((CONFIG.urlApp || location.pathname) + "?demo#/")}">Mientras tanto, ver la demo</a>
     </div>

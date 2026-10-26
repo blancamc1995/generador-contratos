@@ -75,7 +75,7 @@ async function api(url, opciones = {}) {
 
 const COMUNES = "supportsAllDrives=true&includeItemsFromAllDrives=true";
 
-/** "Maestro Priego López " ≈ "maestro priego" (sin tildes, mayúsculas ni espacios). */
+/** "Piso Centro " ≈ "piso centro" (sin tildes, mayúsculas ni espacios). */
 export function normalizar(s) {
   return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }

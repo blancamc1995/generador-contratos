@@ -379,7 +379,7 @@ async function vistaPiso(id) {
 
   pintar(`${cabVolver(nuevo ? "Nuevo piso" : p.nombre, "Ficha del piso", "#/pisos")}
     <form class="seccion" id="f">
-      ${campo("Nombre corto", "nombre", p.nombre, 'placeholder="Lope de Sosa"')}
+      ${campo("Nombre corto", "nombre", p.nombre, 'placeholder="Piso Centro"')}
       ${campo("Dirección completa", "direccion", p.direccion, 'placeholder="Calle, número, piso, CP y ciudad"')}
       ${campo("Ciudad donde se firma", "ciudad", p.ciudad)}
       <div class="eti-campo">Tipo de contrato habitual</div>
@@ -387,7 +387,7 @@ async function vistaPiso(id) {
       ${campo("Habitaciones (separadas por comas)", "habitaciones", (p.habitaciones || []).join(", "), 'placeholder="1, 2, 3, 4"')}
       <label class="campo">Descripción (larga duración)<textarea name="descripcion" placeholder="Piso de tres dormitorios, cocina con lavadero, salón y baño">${esc(p.descripcion || "")}</textarea></label>
       ${campo("Renta habitual (€)", "renta", p.renta ?? "", 'inputmode="decimal"')}
-      ${drive.modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p.carpetaFacturas || "", 'placeholder="Piso ciudad real"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p.carpetaFacturas || "")}">`}
+      ${drive.modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p.carpetaFacturas || "", 'placeholder="Facturas piso centro"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p.carpetaFacturas || "")}">`}
       ${camposLuz(p.luz)}
       ${camposAgua(p.agua)}
       <div class="eti-campo">Fotos del piso</div>
@@ -1904,7 +1904,7 @@ async function vistaEspera(cuenta) {
       ${enviada
         ? `<div class="tarjeta" style="background:var(--salvia-claro)"><div class="nombre" style="color:#3F4D37">Solicitud enviada</div>
             <div class="meta" style="color:#3F4D37">El ${fechaCorta(enviada)}. Te avisaremos en ${esc(usuario.email)}.</div></div>`
-        : `<label class="campo">Cuéntanos cuántos pisos alquilas y cómo (opcional)<textarea id="mensaje" rows="3" placeholder="Por ejemplo: 3 pisos de estudiantes en Córdoba"></textarea></label>
+        : `<label class="campo">Cuéntanos cuántos pisos alquilas y cómo (opcional)<textarea id="mensaje" rows="3" placeholder="Por ejemplo: 3 pisos de estudiantes en Valencia"></textarea></label>
            <button class="btn primario" id="solicitar">Solicitar acceso</button>`}
       <a class="btn secundario" href="${esc((CONFIG.urlApp || location.pathname) + "?demo#/")}">Mientras tanto, ver la demo</a>
     </div>
