@@ -35,7 +35,7 @@ export const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
 // ================= modo demostración =================
 
 function crearDemo() {
-  const CLAVE = "contratos-demo-v7";
+  const CLAVE = "contratos-demo-v9";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -219,6 +219,49 @@ function semilla() {
   m["contratos/demoContrato3"] = { pisoId: "atico", pisoNombre: "Ático Jardines", plantilla: d3.plantilla, curso: "2026-27", años: [2026, 2027],
     inquilinos: d3.inquilinos.map(i => i.nombre), nombreArchivo: "Contrato_AticoJardines_Completo_2026-27.pdf", datos: d3,
     enDrive: enDrive([2026, 2027], "atico", "c3"), estado: "generado", creada: ts(1), creadaPor: "demo" };
+
+  // Números de ejemplo: datos económicos de los pisos y algunas facturas.
+  const eco = (o) => ({ imputacion: "1.1", reduccion: "50", otros: [], ...o });
+  m["pisos/centro"].economia = eco({ precioCompra: "165000", gastosCompra: "13800", fechaCompra: "2021-06-15", mejoras: "14000", mobiliario: "6500",
+    valorCatastral: "72000", valorCatastralConstruccion: "41000", hipoteca: { cuotaMensual: "610", interesesAnuales: "2900", importeInicial: "132000", capitalPendiente: "112000" },
+    ibi: "420", basura: "90", comunidad: "720", seguroHogar: "260", seguroImpago: "0", suministros: "2100", otros: [{ concepto: "Gestoría", importe: "180" }] });
+  m["pisos/universidad"].economia = eco({ precioCompra: "138000", gastosCompra: "11200", fechaCompra: "2019-09-01", mejoras: "8000", mobiliario: "5200",
+    valorCatastral: "61000", valorCatastralConstruccion: "35000", hipoteca: { cuotaMensual: "480", interesesAnuales: "1700", importeInicial: "110000", capitalPendiente: "84000" },
+    ibi: "380", basura: "85", comunidad: "600", seguroHogar: "230", suministros: "2400" });
+  m["pisos/atico"].economia = eco({ precioCompra: "210000", gastosCompra: "17500", fechaCompra: "2022-02-10", mobiliario: "7000",
+    valorCatastral: "95000", valorCatastralConstruccion: "58000", ibi: "610", basura: "95", comunidad: "960", seguroHogar: "310", seguroImpago: "280", reduccion: "0" });
+  m["pisos/rio"].economia = eco({ precioCompra: "118000", gastosCompra: "9500", fechaCompra: "2018-04-20", mejoras: "6000", mobiliario: "3000",
+    valorCatastral: "54000", valorCatastralConstruccion: "30000", hipoteca: { cuotaMensual: "395", interesesAnuales: "1100", importeInicial: "94000", capitalPendiente: "61000" },
+    ibi: "330", comunidad: "540", seguroHogar: "210", seguroImpago: "240" });
+  const factura = (id, pisoId, proveedor, concepto, fecha, importe, categoria) =>
+    (m[`facturas/${id}`] = { pisoId, pisoNombre: m[`pisos/${pisoId}`].nombre, proveedor, concepto, fecha, importe, categoria, nombre: `${concepto}.pdf`, link: "#", creada: ts(10) });
+  factura("f1", "centro", "Fontanería Ejemplo", "Reparación calentador", "2025-11-12", "240", "reparacion");
+  factura("f2", "centro", "Muebles Ejemplo", "Colchones habitaciones", "2025-08-20", "780", "mobiliario");
+  factura("f3", "universidad", "Electricidad Ejemplo", "Factura luz agosto", "2025-08-31", "96", "suministros");
+  factura("f4", "rio", "Pinturas Ejemplo", "Pintura salón", "2025-03-05", "650", "reparacion");
+  factura("f5", "atico", "Reformas Ejemplo", "Cambio de ventanas", "2025-10-01", "3200", "mejora");
+  // Contratos firmados del año pasado para que haya ingresos en el resumen de la Renta.
+  const viejo = (id, pisoId, plantilla, nombre, renta, ini, fin, extra = {}) => {
+    const p = m[`pisos/${pisoId}`];
+    m[`contratos/${id}`] = { pisoId, pisoNombre: p.nombre, plantilla, curso: ini.slice(0, 4), años: [+ini.slice(0, 4)], inquilinos: [nombre],
+      nombreArchivo: `Contrato_${p.nombre.replace(/\s/g, "")}_${nombre.replace(/\s/g, "")}_${ini.slice(0, 4)}.pdf`, estado: "firmado", creada: ts(400), creadaPor: "demo", firmado: [], enDrive: [],
+      datos: { ...comun, plantilla, piso: { nombre: p.nombre, direccion: p.direccion }, inquilinos: [persona("D.", nombre, "", "")], renta, fianza: "",
+        fechaInicio: ini, fechaFin: fin, luz: p.luz, agua: p.agua, wifi: p.wifi, ...extra } };
+  };
+  viejo("antiguo1", "centro", "temporada_habitacion", "Inquilino Pasado Uno", "310", "2024-09-01", "2025-06-30", { motivoTemporada: "estudios" });
+  viejo("antiguo2", "centro", "temporada_habitacion", "Inquilino Pasado Dos", "310", "2024-09-01", "2025-06-30", { motivoTemporada: "estudios" });
+  viejo("antiguo3", "centro", "temporada_habitacion", "Inquilino Pasado Tres", "320", "2025-09-01", "2026-06-30", { motivoTemporada: "estudios" });
+  viejo("antiguo4", "universidad", "habitacion", "Inquilina Pasada Cuatro", "285", "2024-09-01", "2025-07-31");
+  viejo("antiguo5", "universidad", "habitacion", "Inquilina Pasada Cinco", "290", "2025-09-01", "2026-07-31");
+  viejo("antiguo6", "rio", "larga_duracion", "Inquilino Pasado Seis", "650", "2023-11-01", "");
+  m["contratos/antiguo6"].finalizado = "2026-10-15";
+  viejo("antiguo7", "atico", "temporada_piso", "Grupo Pasado Siete", "880", "2024-10-01", "2025-06-30", { motivoTemporada: "estudios" });
+  viejo("antiguo8", "atico", "temporada_piso", "Grupo Actual Ocho", "900", "2025-10-01", "2026-06-30", { motivoTemporada: "estudios" });
+  viejo("actual1", "centro", "temporada_habitacion", "Inquilina Actual Uno", "320", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios" });
+  viejo("actual2", "centro", "temporada_habitacion", "Inquilino Actual Dos", "330", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios" });
+  viejo("actual3", "universidad", "habitacion", "Inquilina Actual Tres", "290", "2026-09-01", "2027-07-31");
+  viejo("actual4", "universidad", "habitacion", "Inquilino Actual Cuatro", "295", "2026-09-01", "2027-07-31");
+  viejo("actual5", "universidad", "habitacion", "Inquilina Actual Cinco", "285", "2026-09-01", "2027-07-31");
   // Todo vive dentro de la cuenta de demostración.
   const out = {};
   for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;

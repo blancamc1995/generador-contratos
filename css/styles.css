@@ -260,3 +260,19 @@ details.plegable > summary::-webkit-details-marker { display: none; }
 details.plegable > summary::after { content: "+"; font-family: var(--sans); font-size: 22px; color: var(--terracota); line-height: 1; }
 details.plegable[open] > summary::after { content: "–"; }
 details.plegable > .cuerpo { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+
+/* Finanzas */
+.pestañas { padding: 0 20px; margin-bottom: 4px; }
+.pestañas a { border: 1px solid var(--borde); background: var(--tarjeta); color: var(--tinta); font-size: 14px; min-height: 38px; padding: 0 16px;
+  border-radius: 999px; display: inline-flex; align-items: center; text-decoration: none; }
+.pestañas a.on { background: var(--terracota); border-color: var(--terracota); color: #fff; font-weight: 600; }
+.cifras { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.cifras div { display: flex; flex-direction: column; }
+.cifras span { font-size: 12px; color: var(--suave); }
+.cifras b { font-size: 16px; font-weight: 600; }
+.cifras b.neg, .linea b.neg { color: #A2321F; }
+.linea { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 3px 0; border-bottom: 1px dashed var(--borde); }
+.linea.menos span { color: var(--suave); }
+.linea.total { font-weight: 700; border-bottom: 1px solid var(--borde); padding-top: 6px; }
+.dos-col { display: grid; gap: 12px; }
+@media (min-width: 700px) { .dos-col { grid-template-columns: 1fr 1fr; } }
