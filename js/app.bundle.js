@@ -94,7 +94,7 @@ var {
   arrayUnion
 } = api;
 function crearDemo() {
-  const CLAVE = "contratos-demo-v10";
+  const CLAVE = "contratos-demo-v11";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -551,13 +551,15 @@ function semilla() {
   viejo("antiguo5", "universidad", "habitacion", "Inquilina Pasada Cinco", "290", "2025-09-01", "2026-07-31");
   viejo("antiguo6", "rio", "larga_duracion", "Inquilino Pasado Seis", "650", "2023-11-01", "");
   m["contratos/antiguo6"].finalizado = "2026-10-15";
+  const mesActual = (/* @__PURE__ */ new Date()).toLocaleDateString("sv-SE").slice(0, 7);
+  m[`cobros/${mesActual}`] = { demoContrato1: { pagado: true, fecha: mesActual + "-03" }, actual1: { pagado: true, fecha: mesActual + "-05" }, actual3: { pagado: true, fecha: mesActual + "-02" } };
   viejo("antiguo7", "atico", "temporada_piso", "Grupo Pasado Siete", "880", "2024-10-01", "2025-06-30", { motivoTemporada: "estudios" });
   viejo("antiguo8", "atico", "temporada_piso", "Grupo Actual Ocho", "900", "2025-10-01", "2026-06-30", { motivoTemporada: "estudios" });
-  viejo("actual1", "centro", "temporada_habitacion", "Inquilina Actual Uno", "320", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios" });
-  viejo("actual2", "centro", "temporada_habitacion", "Inquilino Actual Dos", "330", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios" });
-  viejo("actual3", "universidad", "habitacion", "Inquilina Actual Tres", "290", "2026-09-01", "2027-07-31");
-  viejo("actual4", "universidad", "habitacion", "Inquilino Actual Cuatro", "295", "2026-09-01", "2027-07-31");
-  viejo("actual5", "universidad", "habitacion", "Inquilina Actual Cinco", "285", "2026-09-01", "2027-07-31");
+  viejo("actual1", "centro", "temporada_habitacion", "Inquilina Actual Uno", "320", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios", habitacion: "2" });
+  viejo("actual2", "centro", "temporada_habitacion", "Inquilino Actual Dos", "330", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios", habitacion: "3" });
+  viejo("actual3", "universidad", "habitacion", "Inquilina Actual Tres", "290", "2026-09-01", "2027-07-31", { habitacion: "1" });
+  viejo("actual4", "universidad", "habitacion", "Inquilino Actual Cuatro", "295", "2026-09-01", "2027-07-31", { habitacion: "3" });
+  viejo("actual5", "universidad", "habitacion", "Inquilina Actual Cinco", "285", "2026-09-01", "2027-07-31", { habitacion: "4" });
   const out = {};
   for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;
   out["cuentas/demo/ajustes/general"].condiciones = { ccaa: "Comunitat Valenciana", diaPago: 7, garantiaMeses: 0 };
@@ -2351,6 +2353,10 @@ async function vistaPanel() {
   const sinNumeros = pisos.filter((p2) => !num2(p2.economia?.precioCompra));
   const netaCartera = invertido > 0 ? (ingresosMes * 12 - gastosA\u00F1o) / invertido : null;
   const fmt = (x) => Math.round(x).toLocaleString("es-ES") + " \u20AC";
+  const ymHoy = mesDe(/* @__PURE__ */ new Date());
+  const cobrosMes = cobrosDelMes(contratos, ymHoy);
+  const estCobros = await getDoc(D("cobros", ymHoy)).then((x) => x.exists() ? x.data() : {}).catch(() => ({}));
+  const nCobrados = cobrosMes.filter((x) => estCobros[x.c.id]?.pagado).length;
   const avisos = [
     ...porEnviar.map((c) => `<a class="tarjeta" href="#/contrato/${c.id}"><div class="fila"><div><div class="nombre">${esc(c.inquilinos.join(", "))}</div>
       <div class="meta">${esc(c.pisoNombre)} \xB7 contrato listo para revisar y enviar</div></div><span class="chip firma">Por enviar</span></div></a>`),
@@ -2367,6 +2373,9 @@ async function vistaPanel() {
       <div class="stat"><b style="font-size:22px">${plazas ? `${ocupadas}/${plazas}` : "\u2014"}</b><span>Ocupaci\xF3n (pisos y habitaciones)</span></div>
       <div class="stat"><b style="font-size:22px">${netaCartera === null ? "\u2014" : (netaCartera * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 }) + " %"}</b><span>Rentabilidad neta</span></div>
     </div>
+    ${cobrosMes.length ? `<div class="seccion" style="padding-top:0"><a class="tarjeta" href="#/cobros"><div class="fila"><div>
+      <div class="nombre">Cobros de ${MESES[(/* @__PURE__ */ new Date()).getMonth()]}</div><div class="meta">${nCobrados} de ${cobrosMes.length} cobrados</div></div>
+      <span class="chip ${nCobrados === cobrosMes.length ? "ok" : "espera"}">${nCobrados === cobrosMes.length ? "Todo cobrado" : `${cobrosMes.length - nCobrados} pendiente${cobrosMes.length - nCobrados > 1 ? "s" : ""}`}</span></div></a></div>` : ""}
     <div class="seccion" style="padding-top:0"><div class="pildoras">
       <a class="btn secundario" href="#/finanzas" style="min-height:40px">Rentabilidad</a>
       <a class="btn secundario" href="#/finanzas/renta" style="min-height:40px">Resumen Renta</a>
@@ -2415,11 +2424,13 @@ async function vistaPanel() {
   };
 }
 async function vistaPisos() {
-  const pisos = await listarPisos();
-  pintar(`${cabVolver("Pisos")}
+  const [pisos, contratos] = await Promise.all([listarPisos(), listar("contratos")]);
+  pintar(`${cabVolver("Pisos", "Ocupaci\xF3n de hoy")}
     <div class="seccion">${pisos.map((p2) => `
-      <a class="tarjeta" href="#/piso/${p2.id}"><div class="nombre">${esc(p2.nombre)}</div>
-      <div class="meta">${esc(p2.direccion)}</div></a>`).join("") || '<div class="vacio">Sin pisos todav\xEDa.</div>'}</div>
+      <div class="tarjeta" style="gap:10px"><a href="#/piso/${p2.id}" style="text-decoration:none;color:inherit"><div class="fila"><div>
+        <div class="nombre">${esc(p2.nombre)}</div><div class="meta">${esc(PLANTILLAS[p2.plantilla] || "")} \xB7 ${esc(p2.direccion)}</div></div>
+        <span class="chip gris">Ficha</span></div></a>
+        ${htmlOcupacion(p2, contratos.filter((c) => c.pisoId === p2.id))}</div>`).join("") || '<div class="vacio">Sin pisos todav\xEDa.</div>'}</div>
     <div class="acciones"><a class="btn primario ancho" href="#/piso/nuevo">${ICO.mas} A\xF1adir piso</a></div>`, "pisos");
 }
 var LUZ_OFRECIDAS = ["A", "B", "D"];
@@ -2969,6 +2980,7 @@ function datosContrato(inv, grupo, ajustes, fechaFirma, piso, conFotos) {
       tipoDoc: r.tipoDoc,
       numDoc: r.numDoc,
       domicilio: r.domicilio,
+      telefono: r.telefono || "",
       avales: (r.avales || []).map((a) => ({ tratamiento: a.tratamiento, nombre: a.nombre, tipoDoc: a.tipoDoc, numDoc: a.numDoc, parentesco: a.parentesco }))
     })),
     renta: inv.renta,
@@ -3090,7 +3102,8 @@ async function vistaContratos() {
       <a class="tarjeta" href="#/contrato/${c.id}"><div class="fila"><div>
         <div class="nombre">${esc(c.inquilinos?.join(", "))}</div>
         <div class="meta">${esc(c.pisoNombre)} \xB7 ${esc(c.curso)}</div></div>
-        <span class="chip ${c.estado === "firmado" ? "ok" : c.estado === "firmando" ? "espera" : "firma"}">${{ firmado: "Firmado", firmando: "En firma" }[c.estado] || "Por enviar"}</span></div></a>`).join("") || '<div class="vacio">A\xFAn no hay contratos.</div>'}</div>`, "contratos");
+        <span class="chip ${c.estado === "firmado" ? "ok" : c.estado === "firmando" ? "espera" : "firma"}">${{ firmado: "Firmado", firmando: "En firma" }[c.estado] || "Por enviar"}</span></div></a>`).join("") || '<div class="vacio">A\xFAn no hay contratos.</div>'}</div>
+    <div class="acciones"><a class="btn secundario ancho" href="#/antiguo">${ICO.mas} A\xF1adir un contrato anterior</a></div>`, "contratos");
 }
 var TIPOS_EDITABLES = ["title", "subtitle", "heading", "subheading", "p"];
 async function vistaEditar(id) {
@@ -4333,7 +4346,17 @@ async function vistaRenta() {
         ${ts.map((t) => t.html).join("") || '<div class="vacio">Sin pisos todav\xEDa.</div>'}
         <p class="ayuda">Los ingresos salen de los contratos enviados a firmar o firmados; los gastos, de los datos econ\xF3micos de cada piso y de las facturas del a\xF1o seg\xFAn su tipo. Los gastos fijos se cuentan en proporci\xF3n a los d\xEDas alquilado. Es una estimaci\xF3n para preparar la declaraci\xF3n: rev\xEDsala con tu gestor.</p>
       </div>
-      <div class="acciones"><button class="btn primario ancho" id="pdf">Descargar resumen para el gestor (PDF)</button></div>`, "finanzas");
+      <div class="acciones"><button class="btn primario ancho" id="pdf">Descargar resumen para el gestor (PDF)</button>
+        <button class="btn secundario ancho" id="excel">Exportar a Excel</button></div>`, "finanzas");
+    $("#excel").onclick = async (e) => {
+      e.target.disabled = true;
+      try {
+        await exportarExcel(a\u00F1o);
+      } catch (err) {
+        aviso(err.message, true);
+      }
+      e.target.disabled = false;
+    };
     $("[name=a\xF1o]").onchange = (e) => {
       a\u00F1o = +e.target.value;
       pintarRenta();
@@ -4465,6 +4488,271 @@ async function vistaSimulador() {
   } catch {
   }
   calcular();
+}
+async function vistaContratoAntiguo() {
+  const pisos = await listarPisos();
+  if (!pisos.length) return pintar(`${cabVolver("Contrato anterior", "", "#/contratos")}<div class="vacio">Primero <a href="#/piso/nuevo">a\xF1ade un piso</a>.</div>`, "contratos");
+  let piso = pisos[0];
+  let archivo = null;
+  const formulario = () => {
+    const pl = $("[name=plantilla]")?.value || piso.plantilla || "habitacion";
+    return `${selectorTipo(pl)}
+      ${porHabitacion(pl) ? `<label class="campo">Habitaci\xF3n<select name="habitacion">${(piso.habitaciones?.length ? piso.habitaciones : ["1", "2", "3", "4"]).map((h2) => `<option>${esc(h2)}</option>`).join("")}</select></label>` : ""}
+      <label class="campo">Inquilino o inquilinos (uno por l\xEDnea)<textarea name="inquilinos" rows="2" placeholder="Nombre y apellidos"></textarea></label>
+      <div class="rejilla">${campo("Renta mensual (\u20AC)", "renta", piso.renta ?? "", 'inputmode="decimal"')}${campo("Cuotas de suministros al mes (\u20AC)", "cuotas", "", 'inputmode="decimal" placeholder="0"')}</div>
+      <div class="rejilla">${campo("Desde", "fechaInicio", "", 'type="date"')}${campo(pl === "larga_duracion" ? "Termin\xF3 (vac\xEDo si sigue)" : "Hasta", "fechaFin", "", 'type="date"')}</div>
+      <div class="tarjeta"><div class="fila"><div><div class="nombre" id="pdf-nombre">Sin PDF</div><div class="meta">Opcional: el contrato firmado, para guardarlo en tu Drive</div></div>
+        <label class="btn secundario" style="min-height:40px">Subir PDF<input type="file" accept="application/pdf" id="pdf" hidden></label></div></div>`;
+  };
+  pintar(`${cabVolver("Contrato anterior", "Para que cuenten sus ingresos", "#/contratos")}
+    <div class="seccion">
+      <p class="ayuda">A\xF1ade los contratos que firmaste fuera de la app. No se genera ning\xFAn documento: sirven para la rentabilidad, la ocupaci\xF3n y el resumen de la Renta.</p>
+      <div class="eti-campo">Piso</div>
+      <div class="pildoras" id="pisos">${pisos.map((p2, i) => `<button type="button" data-id="${p2.id}" class="${i === 0 ? "on" : ""}">${esc(p2.nombre)}</button>`).join("")}</div>
+      <form id="f" class="seccion" style="padding:0">${formulario()}</form>
+    </div>
+    <div class="acciones"><button class="btn primario ancho" id="guardar">Guardar contrato</button></div>`, "contratos");
+  const f = $("#f");
+  const repintar = () => {
+    f.innerHTML = formulario();
+    activarSegmentos(f);
+    activarSelectorTipo(f, (pl) => datosModelo(pl, { nombre: piso.nombre, direccion: piso.direccion, renta: piso.renta, luz: piso.luz, agua: piso.agua, wifi: piso.wifi }));
+    $("#pdf").onchange = (e) => {
+      archivo = e.target.files[0] || null;
+      $("#pdf-nombre").textContent = archivo ? archivo.name : "Sin PDF";
+    };
+  };
+  repintar();
+  f.addEventListener("change", (e) => {
+    if (e.target.name === "plantilla") repintar();
+  });
+  $("#pisos").onclick = (e) => {
+    const b = e.target.closest("button[data-id]");
+    if (!b) return;
+    $$("#pisos button").forEach((x) => x.classList.toggle("on", x === b));
+    piso = pisos.find((p2) => p2.id === b.dataset.id);
+    $("[name=plantilla]", f).value = piso.plantilla || "habitacion";
+    repintar();
+  };
+  $("#guardar").onclick = async (e) => {
+    const v = (n) => (f[n]?.value ?? "").trim();
+    const pl = v("plantilla");
+    const nombres = v("inquilinos").split("\n").map((x) => x.trim()).filter(Boolean);
+    if (!nombres.length) return aviso("Escribe el nombre del inquilino", true);
+    if (!v("renta") || !v("fechaInicio")) return aviso("Faltan la renta y la fecha de inicio", true);
+    if (pl !== "larga_duracion" && !v("fechaFin")) return aviso("Falta la fecha de fin", true);
+    const larga = pl === "larga_duracion";
+    const datos = {
+      plantilla: pl,
+      piso: { nombre: piso.nombre, direccion: piso.direccion, numHabitaciones: piso.numHabitaciones || 0 },
+      habitacion: porHabitacion(pl) ? v("habitacion") : "",
+      inquilinos: nombres.map((n) => ({ nombre: n, avales: [] })),
+      renta: v("renta"),
+      fechaInicio: v("fechaInicio"),
+      fechaFin: larga ? "" : v("fechaFin"),
+      luz: { opcion: "A" },
+      agua: num2(v("cuotas")) > 0 ? { opcion: "cuota", cuota: v("cuotas") } : { opcion: "incluida" },
+      wifi: { opcion: "nomencionar" }
+    };
+    const inv = { pisoNombre: piso.nombre, plantilla: pl, fechaInicio: datos.fechaInicio, fechaFin: datos.fechaFin, finalizado: larga ? v("fechaFin") : "" };
+    const nombreArchivo = `Contrato_${slug(piso.nombre)}${datos.habitacion ? "_Hab" + slug(datos.habitacion) : ""}_${nombres.length > 1 ? "Completo" : slug(nombres[0])}_${cursoDe(inv)}.pdf`;
+    e.target.disabled = true;
+    try {
+      let firmado = [];
+      if (archivo) {
+        const ajustes = await leerAjustes();
+        firmado = await subirATodas(await archivo.arrayBuffer(), nombreArchivo, await carpetasDestino(ajustes, inv));
+      }
+      const ref = await addDoc(C("contratos"), {
+        pisoId: piso.id,
+        pisoNombre: piso.nombre,
+        plantilla: pl,
+        curso: cursoDe(inv),
+        a\u00F1os: a\u00F1osFiscales(inv),
+        inquilinos: nombres,
+        nombreArchivo,
+        datos,
+        enDrive: firmado,
+        firmado,
+        estado: "firmado",
+        origen: "manual",
+        ...larga && v("fechaFin") ? { finalizado: v("fechaFin") } : {},
+        creada: serverTimestamp(),
+        creadaPor: usuario.email
+      });
+      aviso("Contrato a\xF1adido");
+      location.hash = `#/contrato/${ref.id}`;
+    } catch (err) {
+      aviso("No se pudo guardar: " + err.message, true);
+      e.target.disabled = false;
+    }
+  };
+}
+function ocupacionDe(piso, contratos, hoy = hoyISO()) {
+  const vig = contratosVigentes(contratos);
+  const fin = (c) => c.finalizado || c.datos?.fechaFin || "";
+  const actual = (cs) => cs.find((c) => (c.datos?.fechaInicio || "") <= hoy && (!fin(c) || fin(c) >= hoy));
+  const proximo = (cs) => cs.filter((c) => (c.datos?.fechaInicio || "") > hoy).sort((a, b) => a.datos.fechaInicio.localeCompare(b.datos.fechaInicio))[0];
+  if (porHabitacion(piso.plantilla)) {
+    const habs = piso.habitaciones?.length ? piso.habitaciones : Array.from({ length: Math.max(1, num2(piso.numHabitaciones)) }, (_, i) => String(i + 1));
+    return habs.map((h2) => {
+      const cs = vig.filter((c) => String(c.datos?.habitacion || "") === String(h2));
+      return { nombre: `Habitaci\xF3n ${h2}`, actual: actual(cs), proximo: proximo(cs) };
+    });
+  }
+  return [{ nombre: "Piso entero", actual: actual(vig), proximo: proximo(vig) }];
+}
+function htmlOcupacion(piso, contratos) {
+  const fin = (c) => c.finalizado || c.datos?.fechaFin || "";
+  return `<div class="ocupacion">${ocupacionDe(piso, contratos).map((o) => {
+    const a = o.actual, p2 = o.proximo;
+    const quien = (c) => esc((c.inquilinos || []).join(", "));
+    return `<div class="hueco ${a ? "lleno" : "libre"}">
+      <b>${esc(o.nombre)}</b>
+      ${a ? `<span>${quien(a)}</span><small>${fin(a) ? "hasta el " + fechaLarga(fin(a)) : "sin fecha de fin"}</small>` : `<span>Libre</span>`}
+      ${p2 ? `<small class="prox">Despu\xE9s: ${quien(p2)} desde el ${fechaLarga(p2.datos.fechaInicio)}</small>` : ""}
+    </div>`;
+  }).join("")}</div>`;
+}
+var nombreMes = (ym) => {
+  const [y, m] = ym.split("-").map(Number);
+  return `${MESES[m - 1]} de ${y}`;
+};
+var mesDe = (d) => d.toLocaleDateString("sv-SE").slice(0, 7);
+function cobrosDelMes(contratos, ym) {
+  const ini = ym + "-01", fin = ym + "-31";
+  return contratosVigentes(contratos).filter((c) => {
+    const f = c.finalizado || c.datos?.fechaFin || "9999";
+    return (c.datos?.fechaInicio || "") <= fin && f >= ini;
+  }).map((c) => ({ c, importe: cobroMensual(c.datos) }));
+}
+async function vistaCobros(ym) {
+  ym = /^\d{4}-\d{2}$/.test(ym || "") ? ym : mesDe(/* @__PURE__ */ new Date());
+  const [contratos, s, a] = await Promise.all([listar("contratos"), getDoc(D("cobros", ym)), leerAjustes()]);
+  const estado = s.exists() ? s.data() : {};
+  const lista = cobrosDelMes(contratos, ym).sort((x, y) => x.c.pisoNombre.localeCompare(y.c.pisoNombre));
+  const total = lista.reduce((t, x) => t + x.importe, 0);
+  const cobrado = lista.filter((x) => estado[x.c.id]?.pagado).reduce((t, x) => t + x.importe, 0);
+  const desplazar = (n) => {
+    const [y, m] = ym.split("-").map(Number);
+    return mesDe(new Date(y, m - 1 + n, 1));
+  };
+  const dia = parseInt(a.condiciones?.diaPago, 10) || 7;
+  const tel = (c) => String(c.datos?.inquilinos?.[0]?.telefono || "").replace(/\D/g, "");
+  const msg = (x) => `Hola ${(x.c.inquilinos?.[0] || "").split(" ")[0]}, te recuerdo el pago del alquiler de ${nombreMes(ym)} (${euros(x.importe)}), que venc\xEDa el d\xEDa ${dia}. Si ya lo has hecho, ignora este mensaje. \xA1Gracias!`;
+  pintar(`${cabVolver("Cobros", "Qui\xE9n ha pagado este mes", "#/")}
+    <div class="seccion">
+      <div class="fila"><a class="btn secundario" href="#/cobros/${desplazar(-1)}" style="min-height:38px">\u2039</a>
+        <div class="nombre">${nombreMes(ym).replace(/^./, (c) => c.toUpperCase())}</div>
+        <a class="btn secundario" href="#/cobros/${desplazar(1)}" style="min-height:38px">\u203A</a></div>
+      <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));padding:0">
+        <div class="stat"><b style="font-size:21px">${Math.round(cobrado).toLocaleString("es-ES")} \u20AC</b><span>Cobrado de ${Math.round(total).toLocaleString("es-ES")} \u20AC</span></div>
+        <div class="stat"><b style="font-size:21px">${lista.filter((x) => !estado[x.c.id]?.pagado).length}</b><span>Pendientes</span></div>
+      </div>
+      <p class="ayuda">Marca cada pago cuando lo veas en el banco. A quien no haya pagado puedes mandarle un recordatorio por WhatsApp con un toque.</p>
+      ${lista.map((x) => {
+    const ok = estado[x.c.id]?.pagado;
+    return `<div class="tarjeta" style="gap:8px"><div class="fila"><div>
+            <div class="nombre">${esc((x.c.inquilinos || []).join(", "))}</div>
+            <div class="meta">${esc(x.c.pisoNombre)}${x.c.datos?.habitacion ? ` \xB7 Hab. ${esc(x.c.datos.habitacion)}` : ""} \xB7 ${euros(x.importe)}</div></div>
+            <button class="btn ${ok ? "salvia" : "secundario"}" data-pagado="${x.c.id}" style="min-height:38px">${ok ? "\u2713 Cobrado" : "Marcar cobrado"}</button></div>
+          ${ok ? "" : `<a class="btn fantasma" target="_blank" rel="noopener" href="https://wa.me/${tel(x.c)}?text=${encodeURIComponent(msg(x))}" style="min-height:36px;align-self:flex-start">Recordar por WhatsApp</a>`}
+        </div>`;
+  }).join("") || '<div class="vacio">No hay contratos en vigor este mes.</div>'}
+    </div>`, "inicio");
+  $$("[data-pagado]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.pagado;
+    const ok = !estado[id]?.pagado;
+    await setDoc(D("cobros", ym), { [id]: { pagado: ok, fecha: ok ? hoyISO() : "" } }, { merge: true });
+    vistaCobros(ym);
+  });
+}
+var cargaXlsx = null;
+function cargarXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  cargaXlsx ??= new Promise((ok, ko) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload = () => ok(window.XLSX);
+    s.onerror = () => ko(new Error("No se pudo cargar el generador de Excel"));
+    document.head.appendChild(s);
+  });
+  return cargaXlsx;
+}
+async function exportarExcel(a\u00F1o) {
+  const [pisos, contratos, facturas, a] = await Promise.all([listarPisos(), listar("contratos"), listar("facturas"), leerAjustes()]);
+  const X = await cargarXlsx();
+  const libro = X.utils.book_new();
+  const hoja = (nombre, filas) => X.utils.book_append_sheet(libro, X.utils.json_to_sheet(filas), nombre);
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const resumen = [], ingresos = [];
+  for (const p2 of pisos) {
+    const cs = contratos.filter((c) => c.pisoId === p2.id), fs = facturas.filter((f) => f.pisoId === p2.id);
+    const r = resumenRenta(p2, cs, fs, a\u00F1o);
+    resumen.push({
+      Piso: p2.nombre,
+      Direcci\u00F3n: p2.direccion || "",
+      "D\xEDas alquilado": r.diasArrendado,
+      "D\xEDas vac\xEDo": r.diasVacio,
+      "Ingresos \xEDntegros": r2(r.ingresos),
+      "Intereses hipoteca": r2(r.intereses),
+      "Reparaci\xF3n y conservaci\xF3n": r2(r.reparacion),
+      "Exceso a a\xF1os siguientes": r2(r.exceso),
+      "Otros gastos": r2(r.totalOtros),
+      "Amortizaci\xF3n inmueble": r2(r.amortInmueble),
+      "Amortizaci\xF3n muebles": r2(r.amortMuebles),
+      "Rendimiento neto": r2(r.rendimientoNeto),
+      "Reducci\xF3n": r2(r.reduccion),
+      "Rendimiento reducido": r2(r.rendimientoReducido),
+      "Imputaci\xF3n d\xEDas vac\xEDo": r2(r.imputacion)
+    });
+    r.detalle.forEach((d) => ingresos.push({ Piso: p2.nombre, Inquilinos: d.nombre, Tipo: PLANTILLAS[d.plantilla] || d.plantilla, D\u00EDas: d.dias, Importe: r2(d.importe) }));
+  }
+  hoja(`Renta ${a\u00F1o}`, resumen);
+  hoja("Ingresos", ingresos);
+  hoja("Facturas", facturas.filter((f) => String(f.fecha || "").startsWith(String(a\u00F1o))).map((f) => ({
+    Fecha: f.fecha,
+    Piso: f.pisoNombre,
+    Proveedor: f.proveedor || "",
+    Concepto: f.concepto || "",
+    Tipo: CATEGORIAS[f.categoria || "reparacion"],
+    Importe: num2(f.importe),
+    Enlace: f.link || ""
+  })));
+  hoja("Pisos", pisos.map((p2) => {
+    const e = p2.economia || {};
+    return {
+      Piso: p2.nombre,
+      Tipo: PLANTILLAS[p2.plantilla] || "",
+      "Precio compra": num2(e.precioCompra),
+      "Gastos compra": num2(e.gastosCompra),
+      "Fecha compra": e.fechaCompra || "",
+      "Valor catastral": num2(e.valorCatastral),
+      "V. catastral construcci\xF3n": num2(e.valorCatastralConstruccion),
+      "Cuota hipoteca": num2(e.hipoteca?.cuotaMensual),
+      "Intereses anuales": num2(e.hipoteca?.interesesAnuales),
+      IBI: num2(e.ibi),
+      Comunidad: num2(e.comunidad),
+      "Seguro hogar": num2(e.seguroHogar)
+    };
+  }));
+  hoja("Contratos", contratos.map((c) => ({
+    Piso: c.pisoNombre,
+    Inquilinos: (c.inquilinos || []).join(", "),
+    Tipo: PLANTILLAS[c.plantilla] || c.plantilla,
+    Desde: c.datos?.fechaInicio || "",
+    Hasta: c.finalizado || c.datos?.fechaFin || "",
+    "Cobro mensual": cobroMensual(c.datos || {}),
+    Estado: c.estado
+  })));
+  const bytes = X.write(libro, { bookType: "xlsx", type: "array" });
+  if (DEMO) return aviso(`En la app real aqu\xED se guardar\xEDa \xABAlquileres_${a\u00F1o}.xlsx\xBB`);
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const l = document.createElement("a");
+  l.href = url;
+  l.download = `Alquileres_${a\u00F1o}.xlsx`;
+  l.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5e3);
 }
 var CCAA = [
   "Andaluc\xEDa",
@@ -5131,6 +5419,10 @@ async function enrutar() {
         return await vistaFacturas();
       case "finanzas":
         return await vistaFinanzas(arg || "rentabilidad");
+      case "antiguo":
+        return await vistaContratoAntiguo();
+      case "cobros":
+        return await vistaCobros(arg);
       default:
         location.hash = "#/";
     }

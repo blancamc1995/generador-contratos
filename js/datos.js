@@ -35,7 +35,7 @@ export const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
 // ================= modo demostración =================
 
 function crearDemo() {
-  const CLAVE = "contratos-demo-v10";
+  const CLAVE = "contratos-demo-v11";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -255,13 +255,15 @@ function semilla() {
   viejo("antiguo5", "universidad", "habitacion", "Inquilina Pasada Cinco", "290", "2025-09-01", "2026-07-31");
   viejo("antiguo6", "rio", "larga_duracion", "Inquilino Pasado Seis", "650", "2023-11-01", "");
   m["contratos/antiguo6"].finalizado = "2026-10-15";
+  const mesActual = new Date().toLocaleDateString("sv-SE").slice(0, 7);
+  m[`cobros/${mesActual}`] = { demoContrato1: { pagado: true, fecha: mesActual + "-03" }, actual1: { pagado: true, fecha: mesActual + "-05" }, actual3: { pagado: true, fecha: mesActual + "-02" } };
   viejo("antiguo7", "atico", "temporada_piso", "Grupo Pasado Siete", "880", "2024-10-01", "2025-06-30", { motivoTemporada: "estudios" });
   viejo("antiguo8", "atico", "temporada_piso", "Grupo Actual Ocho", "900", "2025-10-01", "2026-06-30", { motivoTemporada: "estudios" });
-  viejo("actual1", "centro", "temporada_habitacion", "Inquilina Actual Uno", "320", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios" });
-  viejo("actual2", "centro", "temporada_habitacion", "Inquilino Actual Dos", "330", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios" });
-  viejo("actual3", "universidad", "habitacion", "Inquilina Actual Tres", "290", "2026-09-01", "2027-07-31");
-  viejo("actual4", "universidad", "habitacion", "Inquilino Actual Cuatro", "295", "2026-09-01", "2027-07-31");
-  viejo("actual5", "universidad", "habitacion", "Inquilina Actual Cinco", "285", "2026-09-01", "2027-07-31");
+  viejo("actual1", "centro", "temporada_habitacion", "Inquilina Actual Uno", "320", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios", habitacion: "2" });
+  viejo("actual2", "centro", "temporada_habitacion", "Inquilino Actual Dos", "330", "2026-09-01", "2027-06-30", { motivoTemporada: "estudios", habitacion: "3" });
+  viejo("actual3", "universidad", "habitacion", "Inquilina Actual Tres", "290", "2026-09-01", "2027-07-31", { habitacion: "1" });
+  viejo("actual4", "universidad", "habitacion", "Inquilino Actual Cuatro", "295", "2026-09-01", "2027-07-31", { habitacion: "3" });
+  viejo("actual5", "universidad", "habitacion", "Inquilina Actual Cinco", "285", "2026-09-01", "2027-07-31", { habitacion: "4" });
   // Todo vive dentro de la cuenta de demostración.
   const out = {};
   for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;

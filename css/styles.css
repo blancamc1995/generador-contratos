@@ -276,3 +276,13 @@ details.plegable > .cuerpo { padding: 0 18px 18px; display: flex; flex-direction
 .linea.total { font-weight: 700; border-bottom: 1px solid var(--borde); padding-top: 6px; }
 .dos-col { display: grid; gap: 12px; }
 @media (min-width: 700px) { .dos-col { grid-template-columns: 1fr 1fr; } }
+
+/* Ocupación */
+.ocupacion { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.hueco { border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.hueco b { font-size: 13px; }
+.hueco small { color: var(--suave); font-size: 11.5px; }
+.hueco.lleno { background: var(--salvia-claro); }
+.hueco.libre { background: var(--terracota-claro); }
+.hueco.libre span { color: var(--terracota-osc); font-weight: 600; }
+.hueco .prox { margin-top: 4px; }
