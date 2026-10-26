@@ -2612,11 +2612,13 @@ function datosAlternos(d) {
   });
   (x.propietarios || []).forEach((o) => ["nombre", "numDoc"].forEach((k) => cambia(o, k)));
   ["nombre", "direccion", "descripcion"].forEach((k) => cambia(x.piso, k));
-  ["habitacion", "iban", "domicilioPropietarios", "ciudadFirma"].forEach((k) => cambia(x, k));
+  ["habitacion", "iban", "domicilioPropietarios", "ciudadFirma", "motivoTemporada"].forEach((k) => cambia(x, k));
   ["renta", "fianza"].forEach((k) => mas1(x, k));
-  mas1(x.luz, "cuota");
-  mas1(x.luz, "tope");
-  mas1(x.agua, "cuota");
+  for (const s of [x.luz, x.agua, x.wifi]) {
+    mas1(s, "cuota");
+    mas1(s, "tope");
+  }
+  Object.values(x.gastos || {}).forEach((g) => mas1(g, "importe"));
   ["fechaInicio", "fechaFin", "fechaFirma", "fechaEntrega"].forEach((k) => a\u00F1o(x, k));
   return x;
 }
@@ -2643,6 +2645,118 @@ function cambiosRespectoAlModelo(original, items, datos) {
     }
   }
   return cambios;
+}
+var MODELOS_EDITABLES = ["temporada_habitacion", "temporada_piso", "habitacion", "larga_duracion"];
+async function datosEjemploModelo(pl) {
+  const f0 = fechasPorDefecto(pl);
+  const d = await datosModelo(pl, {
+    nombre: "Piso",
+    direccion: "Calle Ejemplo, 1",
+    ciudad: "Ciudad",
+    renta: "300",
+    numHabitaciones: 3,
+    motivoTemporada: "la realizaci\xF3n de estudios durante el curso",
+    luz: { opcion: "D" },
+    agua: { opcion: "incluida" },
+    wifi: { opcion: "incluida" }
+  });
+  d.cambiosModelo = [];
+  d.fechaFirma = f0.inicio;
+  d.fechaInicio = f0.inicio;
+  d.fechaFin = f0.fin;
+  d.fechaEntrega = f0.inicio;
+  d.fianza = "";
+  d.iban = d.iban || "ES00";
+  d.domicilioPropietarios = d.domicilioPropietarios || "Calle Ejemplo, 2";
+  d.inquilinos[0].numDoc = "00000000T";
+  d.inquilinos[0].domicilio = "Calle Ejemplo, 3";
+  d.inquilinos[0].avales[0].numDoc = "00000001R";
+  return d;
+}
+async function vistaModelo(pl) {
+  if (!PLANTILLAS[pl]) {
+    location.hash = "#/ajustes";
+    return;
+  }
+  const a = await leerAjustes();
+  const datos = await datosEjemploModelo(pl);
+  const base = generarContrato(datos);
+  const sinNum = (t) => String(t || "").replace(/^[A-ZÁÉÍÓÚ]+\.\s*/, "");
+  const alternos = new Set(generarContrato(datosAlternos(datos)).map((b) => sinNum(b.text)));
+  const fijo = (b) => typeof b.text === "string" && alternos.has(sinNum(b.text));
+  let items = base.map((b, i) => ({ ...b, orig: i })).filter((b) => TIPOS_EDITABLES.includes(b.type));
+  for (const c of a.modelos?.[pl] || []) {
+    const buscado = sinNum(c.original ?? c.despuesDe);
+    const i = items.findIndex((b) => sinNum(b.text) === buscado);
+    if (i < 0) continue;
+    if (c.tipo === "reemplazar") items[i] = { ...items[i], type: c.bloque || items[i].type, text: c.nuevo };
+    else if (c.tipo === "quitar") items.splice(i, 1);
+    else if (c.tipo === "a\xF1adir") items.splice(i + 1, 0, { type: c.bloque || "p", text: c.nuevo, orig: null });
+  }
+  const NOMBRE = { title: "T\xEDtulo", subtitle: "Subt\xEDtulo", heading: "Apartado", subheading: "Cl\xE1usula", p: "P\xE1rrafo" };
+  const esFijo = (b) => b.orig === null || fijo(base[b.orig]);
+  const pintarEditor = () => {
+    pintar(`${cabVolver("Editar modelo", PLANTILLAS[pl], "#/ajustes")}
+      <div class="seccion">
+        <p class="ayuda">Cambia, quita o a\xF1ade p\xE1rrafos y cl\xE1usulas. Se aplicar\xE1 a todos los contratos nuevos de este tipo; los ya generados no cambian. Las cl\xE1usulas se numeran solas.</p>
+        <p class="ayuda">Los p\xE1rrafos en gris llevan datos de cada contrato (nombres, importes, fechas\u2026) y no se pueden cambiar aqu\xED: se editan en cada contrato.</p>
+        ${items.map((b, i) => esFijo(b) ? `<div class="tarjeta" style="gap:8px;${b.orig === null ? "border:1.5px dashed var(--terracota)" : ""}">
+            <div class="fila"><span class="eti-campo">${NOMBRE[b.type]}${b.orig === null ? " \xB7 nuevo" : ""}</span>
+              <button type="button" class="btn peligro" data-quitar="${i}" style="min-height:32px;font-size:13px">Quitar</button></div>
+            <textarea data-i="${i}" rows="${Math.min(14, Math.max(2, Math.ceil(b.text.length / 34)))}" style="font-family:var(--sans);font-size:15px;line-height:1.5;border:1px solid var(--borde);border-radius:12px;padding:10px 12px;width:100%;${b.type !== "p" ? "font-weight:600;" : ""}">${esc(b.text)}</textarea>
+            ${botonesMas(i)}</div>` : `<div class="tarjeta" style="gap:6px;opacity:.6;background:transparent">
+            <span class="eti-campo">${NOMBRE[b.type]} \xB7 con datos de cada contrato</span>
+            <div style="font-size:14px;line-height:1.5;${b.type !== "p" ? "font-weight:600;" : ""}">${esc(b.text)}</div>
+            ${botonesMas(i)}</div>`).join("")}
+      </div>
+      <div class="acciones">
+        <button class="btn primario ancho" id="guardar">Guardar modelo</button>
+        <div class="dos"><a class="btn secundario" href="#/ajustes">Cancelar</a>
+          <button class="btn secundario" id="pdf">Ver en PDF</button></div>
+        <button class="btn fantasma" id="restaurar">Volver al modelo original</button>
+      </div>`, "ajustes");
+    $$("textarea[data-i]").forEach((t) => t.addEventListener("input", () => {
+      items[+t.dataset.i].text = t.value;
+    }));
+    $$("[data-quitar]").forEach((b) => b.onclick = () => {
+      items.splice(+b.dataset.quitar, 1);
+      pintarEditor();
+    });
+    $$("[data-mas]").forEach((b) => b.onclick = () => {
+      const i = +b.dataset.mas;
+      const nuevo = b.dataset.tipo === "subheading" ? { type: "subheading", text: "NUEVA. T\xEDtulo de la cl\xE1usula.", orig: null } : { type: "p", text: "", orig: null };
+      items.splice(i + 1, 0, nuevo);
+      if (b.dataset.tipo === "subheading") items.splice(i + 2, 0, { type: "p", text: "", orig: null });
+      pintarEditor();
+      const t = $(`textarea[data-i="${i + 1}"]`);
+      if (t) {
+        t.focus();
+        t.select();
+      }
+    });
+    const cambios = () => cambiosRespectoAlModelo(base, items.map((b) => ({ ...b, text: b.text.trim() })).filter((b) => b.text), datos);
+    $("#pdf").onclick = async () => {
+      const d = await datosModelo(pl);
+      d.cambiosModelo = cambios();
+      bajar(await construirPdf(generarContrato(d), null), `Modelo_${String(PLANTILLAS[pl]).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
+    };
+    $("#restaurar").onclick = async () => {
+      if (!preguntar("\xBFVolver al modelo original? Se pierden tus cambios en este modelo.")) return;
+      await setDoc(D("ajustes", "general"), { modelos: { ...a.modelos || {}, [pl]: [] } }, { merge: true });
+      aviso("Modelo original restaurado");
+      location.hash = "#/ajustes";
+    };
+    $("#guardar").onclick = async () => {
+      const lista = cambios();
+      await setDoc(D("ajustes", "general"), { modelos: { ...a.modelos || {}, [pl]: lista } }, { merge: true });
+      aviso(lista.length ? `Modelo guardado (${lista.length} cambio${lista.length > 1 ? "s" : ""})` : "Modelo guardado sin cambios");
+      location.hash = "#/ajustes";
+    };
+  };
+  const botonesMas = (i) => `<div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="p" style="min-height:36px;flex:1">+ P\xE1rrafo debajo</button>
+      <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="subheading" style="min-height:36px;flex:1">+ Cl\xE1usula debajo</button></div>`;
+  pintarEditor();
 }
 var ROL_TEXTO = { arrendador: "Arrendador", arrendatario: "Arrendatario", fiador: "Fiador" };
 function bloquesDe(c) {
@@ -3613,10 +3727,17 @@ async function vistaAjustes() {
       <label class="campo">Cl\xE1usulas adicionales (se a\xF1aden a todos tus contratos; separa cada una con una l\xEDnea en blanco)
         <textarea name="clausulasExtra" rows="5" placeholder="Por ejemplo: No se permiten mascotas sin autorizaci\xF3n escrita del arrendador.">${esc(k.clausulasExtra || "")}</textarea></label>
 
-      ${Object.entries(a.modelos || {}).filter(([, v]) => v?.length).map(([pl, v]) => `<div class="tarjeta"><div class="fila"><div>
-          <div class="nombre" style="font-size:14px">Modelo \xAB${esc(PLANTILLAS[pl] || pl)}\xBB</div>
-          <div class="meta">${v.length} cambio(s) guardados desde el editor de contratos</div></div>
-          <button type="button" class="btn peligro" data-borrar-modelo="${pl}" style="min-height:36px">Quitar cambios</button></div></div>`).join("")}
+      <div class="eti-campo">Modelos de contrato</div>
+      <p class="ayuda">Edita el texto base de cada tipo de contrato: cambia cl\xE1usulas, quita las que no uses o a\xF1ade las tuyas.</p>
+      ${[...MODELOS_EDITABLES, ...Object.keys(a.modelos || {}).filter((pl) => !MODELOS_EDITABLES.includes(pl) && a.modelos[pl]?.length)].map((pl) => {
+    const n = (a.modelos?.[pl] || []).length;
+    return `<div class="tarjeta"><div class="fila"><div>
+          <div class="nombre" style="font-size:14px">${esc(PLANTILLAS[pl] || pl)}</div>
+          <div class="meta">${n ? `${n} cambio${n > 1 ? "s" : ""} sobre el modelo original` : "Modelo original"}</div></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+            ${MODELOS_EDITABLES.includes(pl) ? `<a class="btn secundario" href="#/modelo/${pl}" style="min-height:36px">Editar</a>` : ""}
+            ${n ? `<button type="button" class="btn peligro" data-borrar-modelo="${pl}" style="min-height:36px">Restaurar</button>` : ""}</div></div></div>`;
+  }).join("")}
 
       <div class="eti-campo">Google Drive</div>
       ${CONFIG.driveCompleto === false ? '<input type="hidden" name="modoDrive" value="propia">' : segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
@@ -3913,6 +4034,8 @@ async function enrutar() {
         return await vistaContrato(arg);
       case "editar":
         return await vistaEditar(arg);
+      case "modelo":
+        return await vistaModelo(arg);
       case "ajustes":
         return await vistaAjustes();
       case "facturas":
