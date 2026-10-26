@@ -94,7 +94,7 @@ var {
   arrayUnion
 } = api;
 function crearDemo() {
-  const CLAVE = "contratos-demo-v6";
+  const CLAVE = "contratos-demo-v7";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -250,7 +250,7 @@ function semilla() {
     habitaciones: ["1", "2", "3"],
     renta: "900",
     luz: { opcion: "A" },
-    agua: { opcion: "cuota", cuota: "15", tope: "25" },
+    agua: { opcion: "cuota", cuota: "15" },
     wifi: { opcion: "titularidad" }
   };
   m["pisos/rio"] = {
@@ -263,7 +263,7 @@ function semilla() {
     descripcion: "con dos dormitorios, cocina, sal\xF3n, ba\xF1o y terraza",
     luz: { opcion: "A" },
     agua: { opcion: "cuota", cuota: "10" },
-    wifi: { opcion: "titularidad" },
+    wifi: { opcion: "nomencionar" },
     gastos: { comunidad: { quien: "arrendador" }, ibi: { quien: "arrendador" }, basura: { quien: "arrendatario", importe: "90" } }
   };
   m["invitaciones/demoInvitacion1"] = {
@@ -300,6 +300,151 @@ function semilla() {
     ],
     consentimiento: true,
     enviada: ts(1)
+  };
+  const FIRMA = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAABuCAYAAACdmi6mAAADX0lEQVR42u3dQXLiMBAFUEjlHDlJjp+TcJFklaosoAgYSf1b761nJhn789UyxpxOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABX18fH47Csxydgh4ZVFdLl8yhcIic5JSYCgsSk5Tpi4UFuXK6l4BPfN34D/eHAJeXTzX/oyL8y4dmLBYugUcVXjk52bUeRYehpaM0pIbW0JiQqec5EZhERU6pbWXkedbYTEldH//PRfg5UZhUT50Sqv3ZD5jklZYTA+d0pIbhUVUWdEnNzMpLKFbut00ZaGwKL0dU1q9sjNzMldYAldiO6i0lJXC4qmJp+vPxJYQZWVrKDsKi/EjfYUpR2nJjsIioqyQHYXF3cDZWpCaHYUlcOVKy7aQW6xsG5ZV5Ymm+7Y17bn3q29jUFjK6pz0O3corUcnxir/54rn4t3Luv8q2Xli6bgNrzBlVt2WC3DTVTJ5Ukmfso5MthWm4sqTucKasMqsDlz6Cz7l9x/55R2zjkP1ywgKq9kq2eVLH9JKa8Rxn11cCdlxW8OVk3b0xN36Xr7R1wV8Q01mXh6dzGddX6qYHWFuskp2LKvqtzjMPOajc5Qy0ZqwGqySXSertJtJRx7zy+XrPOobtZNu1B22yidfKE1aJXfYBlbM1cqJpMPF/TJbwt+DkFpYq96JefRnp94L1mG7UmWRSL99olRhJRyAiqvkf36PncqqUmFVPO6pt96UKayU0qq2whwJ3g7vBK4urYSJJPUjQKUKK+XEVr02sntRVZ2IE+8L65CZ7Qorae9+ZNu4Q2HNOg4dP5CtsAJOshsrTVkyk23YfVgJz+oWvDwzc6WsNiqs3VdmsktLWW1YWIkXsumxICkrhXW4tFYUh/DtMWW9KivyUtuSt4U9aoVqW31ZMWEt3aIJoAKTFYUVG1oB3Gdr+Mizx2TFlnD4+C6AHD33u30eU2EVLC1lxbOXG+TElnBowISQW+f81sPu5MSEVWYScmMo8qGwIkrLVpCOBSvDhQrrFUXjwimVsjtie+tIFyqsI6VlqmJlmcjbpoX1TPkoK4WiTBRWbIiFU6GgsCJeLJ68qVBQWGVfkKnP0lYo0LSwTCcAJw/zAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoJUfa94TcZZ01N8AAAAASUVORK5CYII=";
+  const propietarios = m["ajustes/general"].propietarios;
+  const comun = {
+    ciudadFirma: "Valencia",
+    condiciones: { ccaa: "Comunitat Valenciana", diaPago: 7, garantiaMeses: 0 },
+    cambiosModelo: [],
+    propietarios,
+    domicilioPropietarios: m["ajustes/general"].domicilio,
+    iban: m["ajustes/general"].iban,
+    conFotos: false
+  };
+  const persona = (tratamiento, nombre, numDoc, domicilio, avales = []) => ({ tratamiento, nombre, tipoDoc: "DNI", numDoc, domicilio, avales });
+  const firmantes = (d) => {
+    const out2 = propietarios.map((p2, i) => ({ fid: `arr${i}`, rol: "arrendador", nombre: p2.nombre, tipoDoc: p2.tipoDoc, numDoc: p2.numDoc }));
+    let k = 0;
+    d.inquilinos.forEach((p2, i) => out2.push({ fid: `inq${i}`, rol: "arrendatario", nombre: p2.nombre, tipoDoc: "DNI", numDoc: p2.numDoc }));
+    d.inquilinos.forEach((p2) => p2.avales.forEach((a) => out2.push({ fid: `fia${k++}`, rol: "fiador", nombre: a.nombre, tipoDoc: "DNI", numDoc: a.numDoc, avalaA: p2.nombre })));
+    return out2;
+  };
+  const firmar = (cid, f, dias) => {
+    m[`contratos/${cid}/firmas/${f.fid}`] = { nombre: f.nombre, numDoc: f.numDoc, rol: f.rol, imagen: FIRMA, huella: "demo", aceptado: true, firmadoEl: ts(dias), dispositivo: "Demo" };
+    m[`contratos/${cid}/estados/${f.fid}`] = { nombre: f.nombre, rol: f.rol, firmadoEl: ts(dias) };
+  };
+  const enDrive = (a\u00F1os, piso, nombre) => a\u00F1os.map((a) => ({ a\u00F1o: a, carpetaId: "demo", id: `demo-${nombre}-${a}`, link: "#" }));
+  const d1 = {
+    ...comun,
+    plantilla: "temporada_habitacion",
+    fechaFirma: "2026-08-28",
+    piso: { nombre: "Piso Centro", direccion: m["pisos/centro"].direccion, descripcion: "", numHabitaciones: 4 },
+    habitacion: "1",
+    inquilinos: [persona(
+      "D.",
+      "Pablo Ejemplo Muestra",
+      "00000004G",
+      "Calle Real, 8, 03001 Alicante",
+      [{ tratamiento: "D.", nombre: "Antonio Ejemplo Real", tipoDoc: "DNI", numDoc: "00000005M", parentesco: "Padre" }]
+    )],
+    renta: "320",
+    fianza: "",
+    fechaInicio: "2026-09-01",
+    fechaFin: "2027-06-30",
+    fechaEntrega: "",
+    motivoTemporada: "la realizaci\xF3n de estudios universitarios durante el curso 2026-2027",
+    luz: m["pisos/centro"].luz,
+    agua: { opcion: "incluida" },
+    wifi: { opcion: "incluida" },
+    gastos: {}
+  };
+  const f1 = firmantes(d1);
+  m["contratos/demoContrato1"] = {
+    pisoId: "centro",
+    pisoNombre: "Piso Centro",
+    plantilla: d1.plantilla,
+    curso: "2026-27",
+    a\u00F1os: [2026, 2027],
+    inquilinos: ["Pablo Ejemplo Muestra"],
+    nombreArchivo: "Contrato_PisoCentro_Hab1_PabloEjemploMuestra_2026-27.pdf",
+    datos: d1,
+    enDrive: enDrive([2026, 2027], "centro", "c1"),
+    firmado: enDrive([2026, 2027], "centro", "c1f"),
+    estado: "firmado",
+    firmantes: f1,
+    firmantesIds: f1.map((f) => f.fid),
+    huella: "demo",
+    firmaElectronica: true,
+    creada: ts(60),
+    creadaPor: "demo",
+    firmadoEl: ts(55)
+  };
+  f1.forEach((f, i) => firmar("demoContrato1", f, 58 - i));
+  const d2 = {
+    ...comun,
+    ciudadFirma: "Zaragoza",
+    plantilla: "larga_duracion",
+    fechaFirma: "2026-10-20",
+    piso: { nombre: "Casa del R\xEDo", direccion: m["pisos/rio"].direccion, descripcion: m["pisos/rio"].descripcion, numHabitaciones: 2 },
+    habitacion: "",
+    inquilinos: [persona("D\xF1a.", "Marta Ejemplo Prueba", "00000006Y", "Avenida de la Paz, 40, 50008 Zaragoza")],
+    renta: "680",
+    fianza: "",
+    fechaInicio: "2026-11-01",
+    fechaFin: "",
+    fechaEntrega: "2026-11-01",
+    motivoTemporada: "",
+    luz: m["pisos/rio"].luz,
+    agua: m["pisos/rio"].agua,
+    wifi: m["pisos/rio"].wifi,
+    gastos: m["pisos/rio"].gastos
+  };
+  const f2 = firmantes(d2);
+  m["contratos/demoContrato2"] = {
+    pisoId: "rio",
+    pisoNombre: "Casa del R\xEDo",
+    plantilla: d2.plantilla,
+    curso: "2026",
+    a\u00F1os: [2026],
+    inquilinos: ["Marta Ejemplo Prueba"],
+    nombreArchivo: "Contrato_CasadelRio_MartaEjemploPrueba_2026.pdf",
+    datos: d2,
+    enDrive: enDrive([2026], "rio", "c2"),
+    estado: "firmando",
+    firmantes: f2,
+    firmantesIds: f2.map((f) => f.fid),
+    huella: "demo",
+    creada: ts(6),
+    creadaPor: "demo",
+    enviadoAFirmar: ts(5)
+  };
+  f2.filter((f) => f.rol !== "arrendador").forEach((f) => firmar("demoContrato2", f, 4));
+  const d3 = {
+    ...comun,
+    plantilla: "temporada_piso",
+    fechaFirma: "2026-10-25",
+    piso: { nombre: "\xC1tico Jardines", direccion: m["pisos/atico"].direccion, descripcion: "", numHabitaciones: 3 },
+    habitacion: "",
+    inquilinos: [
+      persona("D\xF1a.", "Elena Muestra Ejemplo", "00000007F", "Calle Nueva, 3, 12001 Castell\xF3n", [{ tratamiento: "D\xF1a.", nombre: "Rosa Muestra Prueba", tipoDoc: "DNI", numDoc: "00000008P", parentesco: "Madre" }]),
+      persona("D.", "Sergio Prueba Muestra", "00000009D", "Plaza Alta, 2, 02001 Albacete"),
+      persona("D\xF1a.", "Irene Ejemplo Ejemplo", "00000010X", "Calle Baja, 11, 16001 Cuenca")
+    ],
+    renta: "900",
+    fianza: "",
+    fechaInicio: "2026-11-01",
+    fechaFin: "2027-06-30",
+    fechaEntrega: "",
+    motivoTemporada: "la realizaci\xF3n de unas pr\xE1cticas profesionales en la ciudad durante el curso 2026-2027",
+    luz: m["pisos/atico"].luz,
+    agua: m["pisos/atico"].agua,
+    wifi: m["pisos/atico"].wifi,
+    gastos: {}
+  };
+  m["contratos/demoContrato3"] = {
+    pisoId: "atico",
+    pisoNombre: "\xC1tico Jardines",
+    plantilla: d3.plantilla,
+    curso: "2026-27",
+    a\u00F1os: [2026, 2027],
+    inquilinos: d3.inquilinos.map((i) => i.nombre),
+    nombreArchivo: "Contrato_AticoJardines_Completo_2026-27.pdf",
+    datos: d3,
+    enDrive: enDrive([2026, 2027], "atico", "c3"),
+    estado: "generado",
+    creada: ts(1),
+    creadaPor: "demo"
   };
   const out = {};
   for (const [k, v] of Object.entries(m)) out["cuentas/demo/" + k] = v;
@@ -397,16 +542,35 @@ function renumerar(bloques) {
   let n = 0;
   return bloques.map((b) => b.type === "subheading" && RE_CLAUSULA.test(b.text) ? { ...b, text: b.text.replace(RE_CLAUSULA, `${ORDINALES[n++] || "CL\xC1USULA " + n}. `) } : b);
 }
+function sinOrdinal(t) {
+  return String(t || "").replace(RE_CLAUSULA, "");
+}
+var escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function casar(texto, patron) {
+  const t = sinOrdinal(texto);
+  if (typeof patron === "string") return t === sinOrdinal(patron) ? [] : null;
+  const n = Math.max(-1, ...patron.filter((x) => typeof x === "number"));
+  const orden = [];
+  const re = new RegExp("^" + patron.map((x) => typeof x === "number" ? (orden.push(x), "([\\s\\S]+?)") : escRe(x)).join("") + "$");
+  const m = t.match(re);
+  if (!m) return null;
+  const caps = Array(n + 1).fill("");
+  orden.forEach((k, i) => caps[k] = m[i + 1]);
+  return caps;
+}
+function rellenar(nuevo, caps) {
+  return typeof nuevo === "string" ? nuevo : nuevo.map((x) => typeof x === "number" ? caps[x] ?? "" : x).join("");
+}
 function aplicarCambios(bloques, cambios) {
   let out = bloques.map((b) => ({ ...b }));
   for (const c of cambios || []) {
-    const sinNum = (t) => String(t || "").replace(RE_CLAUSULA, "");
-    const buscado = sinNum(c.original ?? c.despuesDe);
-    const i = out.findIndex((b) => typeof b.text === "string" && sinNum(b.text) === buscado);
+    const patron = c.patron ?? c.original ?? c.despuesDe;
+    let caps = null;
+    const i = out.findIndex((b) => typeof b.text === "string" && (caps = casar(b.text, patron)) !== null);
     if (i < 0) continue;
-    if (c.tipo === "reemplazar") out[i] = { type: c.bloque || out[i].type, text: c.nuevo };
+    if (c.tipo === "reemplazar") out[i] = { type: c.bloque || out[i].type, text: rellenar(c.nuevo, caps) };
     else if (c.tipo === "quitar") out.splice(i, 1);
-    else if (c.tipo === "a\xF1adir") out.splice(i + 1, 0, { type: c.bloque || "p", text: c.nuevo });
+    else if (c.tipo === "a\xF1adir") out.splice(i + 1, 0, { type: c.bloque || "p", text: rellenar(c.nuevo, caps) });
   }
   return renumerar(out);
 }
@@ -524,8 +688,8 @@ function suministros(datos) {
   const l = datos.luz || { opcion: "D" };
   const luz = { opcion: { A: "titularidad", B: "cuota", C: "regularizacion", D: "incluida" }[l.opcion] || "incluida", cuota: l.cuota, tope: l.tope };
   const agua = { opcion: datos.plantilla === "larga_duracion" ? "cuota" : "incluida", ...datos.agua || {} };
-  const wifi = { opcion: datos.plantilla === "larga_duracion" ? "titularidad" : "incluida", ...datos.wifi || {} };
-  return { luz, agua, wifi };
+  const wifi = { opcion: datos.plantilla === "larga_duracion" ? "nomencionar" : "incluida", ...datos.wifi || {} };
+  return wifi.opcion === "nomencionar" ? { luz, agua } : { luz, agua, wifi };
 }
 function cuotasFijas(s) {
   return Object.entries(s).filter(([, x]) => (x.opcion === "cuota" || x.opcion === "regularizacion") && num(x.cuota) > 0).map(([k, x]) => [k, num(x.cuota)]);
@@ -551,7 +715,7 @@ function textoSuministros(datos, c, esHab) {
     if (topeLuz > 0) {
       out.push(esHab ? `${base}; en cuanto a la energ\xEDa el\xE9ctrica, siempre que el importe mensual de la factura de electricidad del conjunto de la vivienda no supere los ${euros(topeLuz)}. En caso de superarse dicho l\xEDmite, el exceso ser\xE1 de cuenta de los arrendatarios de la vivienda, repercuti\xE9ndose a partes iguales entre las habitaciones arrendadas, debiendo ${ARR} abonar a EL ARRENDADOR la parte que le corresponda conforme a las facturas que le sean facilitadas.` : `${base}; en cuanto a la energ\xEDa el\xE9ctrica, siempre que el importe mensual de la factura de electricidad no supere los ${euros(topeLuz)}. En caso de superarse dicho l\xEDmite, el exceso ser\xE1 de cuenta de ${ARR}, que ${v("deber\xE1", "deber\xE1n")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`);
     } else {
-      out.push(`${base}${incl.length === 3 ? `, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos` : ""}.`);
+      out.push(`${base}${incl.length > 1 && incl.length === Object.keys(s).length ? `, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos` : ""}.`);
     }
   }
   const tit = de("titularidad");
@@ -1617,7 +1781,7 @@ async function datosModelo(pl, extra = {}) {
 }
 function resumenSuministros(x) {
   const imp = (s) => `cuota ${euros(s.cuota)}${s.tope ? ` con tope ${euros(s.tope)}` : ""}`;
-  const t = (s) => !s || s.opcion === "incluida" ? "incluida" : s.opcion === "titularidad" ? "a nombre del inquilino" : imp(s);
+  const t = (s) => !s || s.opcion === "incluida" ? "incluida" : s.opcion === "titularidad" ? "a nombre del inquilino" : s.opcion === "nomencionar" ? "no se menciona" : imp(s);
   const l = x.luz || { opcion: "D" };
   const luz = l.opcion === "A" ? "a nombre del inquilino" : l.opcion === "D" ? `incluida${l.tope ? ` (tope ${euros(l.tope)})` : ""}` : imp(l);
   return `Luz ${luz} \xB7 agua ${t(x.agua)} \xB7 wifi ${t(x.wifi)}`;
@@ -1884,33 +2048,42 @@ function activarLuz(root) {
   });
   ajustar();
 }
-function camposSuministro(clave, titulo, s = { opcion: "incluida" }) {
+function camposAgua(s = { opcion: "incluida" }) {
   const aparte = s.opcion && s.opcion !== "incluida";
-  return `<div class="tarjeta" data-suministro="${clave}" style="gap:10px">
-    <div class="nombre" style="font-size:14px">${titulo}</div>
-    <label class="check"><input type="checkbox" name="${clave}Aparte" ${aparte ? "checked" : ""}> Se paga aparte (no va incluido en el precio)</label>
+  return `<div class="tarjeta" data-suministro="agua" style="gap:10px">
+    <div class="nombre" style="font-size:14px">Agua</div>
+    <label class="check"><input type="checkbox" name="aguaAparte" ${aparte ? "checked" : ""}> Se paga aparte (no va incluida en el precio)</label>
     <div data-aparte class="seccion" style="padding:0;gap:8px">
-      ${segmento(`${clave}Opcion`, [["titularidad", "Cambio de titularidad"], ["cuota", "Cuota fija con tope"]], s.opcion === "cuota" ? "cuota" : "titularidad")}
-      <div class="rejilla" data-cuota>
-        ${campo("Cuota fija mensual (\u20AC)", `${clave}Cuota`, s.cuota ?? "", 'inputmode="decimal"')}
-        ${campo("Tope mensual (\u20AC, opcional)", `${clave}Tope`, s.tope ?? "", 'inputmode="decimal"')}
-      </div></div></div>`;
+      ${segmento("aguaOpcion", [["titularidad", "Cambio de titularidad"], ["cuota", "Cuota fija"]], s.opcion === "cuota" ? "cuota" : "titularidad")}
+      <div data-cuota>${campo("Cuota fija mensual (\u20AC)", "aguaCuota", s.cuota ?? "", 'inputmode="decimal"')}</div>
+    </div></div>`;
+}
+function camposWifi(s = { opcion: "incluida" }) {
+  const menciona = s.opcion && s.opcion !== "nomencionar";
+  return `<div class="tarjeta" data-suministro="wifi" style="gap:10px">
+    <div class="nombre" style="font-size:14px">Internet (wifi)</div>
+    <label class="check"><input type="checkbox" name="wifiAparte" ${menciona ? "checked" : ""}> Mencionar el wifi en el contrato</label>
+    <div data-aparte class="seccion" style="padding:0;gap:8px">
+      ${segmento("wifiOpcion", [["incluida", "Incluido en el precio"], ["titularidad", "Cambio de titularidad"]], s.opcion === "titularidad" ? "titularidad" : "incluida")}
+    </div></div>`;
 }
 function activarSuministros(root) {
   const ajustar = () => $$("[data-suministro]", root).forEach((t) => {
     const k = t.dataset.suministro;
-    const ap = $(`[name=${k}Aparte]`, t).checked;
-    $("[data-aparte]", t).style.display = ap ? "" : "none";
-    $("[data-cuota]", t).style.display = $(`[name=${k}Opcion]`, t).value === "cuota" ? "" : "none";
+    $("[data-aparte]", t).style.display = $(`[name=${k}Aparte]`, t).checked ? "" : "none";
+    const c = $("[data-cuota]", t);
+    if (c) c.style.display = $(`[name=${k}Opcion]`, t).value === "cuota" ? "" : "none";
   });
   root.addEventListener("change", ajustar);
   ajustar();
 }
 function leerSuministro(root, k) {
-  if (!$(`[name=${k}Aparte]`, root)?.checked) return { opcion: "incluida" };
   const v = (n) => ($(`[name="${k}${n}"]`, root)?.value ?? "").trim();
+  const marcado = $(`[name=${k}Aparte]`, root)?.checked;
+  if (k === "wifi") return marcado ? { opcion: v("Opcion") || "incluida" } : { opcion: "nomencionar" };
+  if (!marcado) return { opcion: "incluida" };
   const opcion = v("Opcion") || "titularidad";
-  return opcion === "cuota" ? { opcion, cuota: v("Cuota"), tope: v("Tope") } : { opcion };
+  return opcion === "cuota" ? { opcion, cuota: v("Cuota") } : { opcion };
 }
 async function imagenesAPdf(archivos) {
   const { jsPDF } = window.jspdf;
@@ -1972,8 +2145,8 @@ async function vistaPiso(id) {
       ${campo("Renta habitual (\u20AC)", "renta", p2.renta ?? "", 'inputmode="decimal"')}
       ${modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p2.carpetaFacturas || "", 'placeholder="Facturas piso centro"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p2.carpetaFacturas || "")}">`}
       ${camposLuz(p2.luz || { opcion: p2.plantilla === "larga_duracion" ? "A" : "D" })}
-      ${camposSuministro("agua", "Agua", p2.agua || { opcion: p2.plantilla === "larga_duracion" ? "cuota" : "incluida" })}
-      ${camposSuministro("wifi", "Internet (wifi)", p2.wifi || { opcion: p2.plantilla === "larga_duracion" ? "titularidad" : "incluida" })}
+      ${camposAgua(p2.agua || { opcion: p2.plantilla === "larga_duracion" ? "cuota" : "incluida" })}
+      ${camposWifi(p2.wifi || { opcion: p2.plantilla === "larga_duracion" ? "nomencionar" : "incluida" })}
       <div data-solo-piso class="seccion" style="padding:0">
         <div class="eti-campo">Gastos de la vivienda</div>
         <p class="ayuda">Por ley los paga el propietario, salvo que pact\xE9is que los asuma el inquilino indicando su importe anual (art. 20 LAU).</p>
@@ -2065,7 +2238,6 @@ async function vistaPiso(id) {
     const cond = leerCondiciones(f);
     if ((cond.luz.opcion === "B" || cond.luz.opcion === "C") && !cond.luz.cuota) return aviso("Falta la cuota fija de la luz", true);
     if (cond.agua.opcion === "cuota" && !cond.agua.cuota) return aviso("Falta la cuota fija del agua", true);
-    if (cond.wifi.opcion === "cuota" && !cond.wifi.cuota) return aviso("Falta la cuota fija del wifi", true);
     const gastos = {};
     for (const g of ["comunidad", "ibi", "basura"]) gastos[g] = { quien: v(`gasto_${g}`) || "arrendador", importe: v(`gasto_${g}_importe`) };
     if (!porHabitacion(tipo) && Object.values(gastos).some((g) => g.quien === "arrendatario" && !g.importe))
@@ -2188,7 +2360,7 @@ async function vistaNueva() {
       motivoTemporada: esTemporada(pl) ? v("motivoTemporada") : "",
       luz: piso.luz || { opcion: pl === "larga_duracion" ? "A" : "D" },
       agua: piso.agua || { opcion: pl === "larga_duracion" ? "cuota" : "incluida" },
-      wifi: piso.wifi || { opcion: pl === "larga_duracion" ? "titularidad" : "incluida" },
+      wifi: piso.wifi || { opcion: pl === "larga_duracion" ? "nomencionar" : "incluida" },
       estado: "abierta",
       respuestas: 0,
       creada: serverTimestamp(),
@@ -2673,6 +2845,81 @@ async function datosEjemploModelo(pl) {
   d.inquilinos[0].avales[0].numDoc = "00000001R";
   return d;
 }
+function alternoHuecos(d) {
+  const x = JSON.parse(JSON.stringify(d));
+  let n = 0;
+  const cambia = (o, k) => {
+    if (o && o[k]) o[k] = `\u03A9${++n}\u03A9`;
+  };
+  const mas = (o, k) => {
+    if (o && o[k] !== void 0 && o[k] !== "" && o[k] !== null) o[k] = String((parseFloat(String(o[k]).replace(",", ".")) || 0) + 7.37);
+  };
+  const fecha = (o, k) => {
+    if (!o?.[k]) return;
+    const [y, m, dd] = o[k].split("-").map(Number);
+    o[k] = `${y + 3}-${String(m === 11 ? 10 : 11).padStart(2, "0")}-${dd === 15 ? "16" : "15"}`;
+  };
+  (x.inquilinos || []).forEach((i) => {
+    ["nombre", "numDoc", "domicilio"].forEach((k) => cambia(i, k));
+    (i.avales || []).forEach((a) => ["nombre", "numDoc", "parentesco"].forEach((k) => cambia(a, k)));
+  });
+  (x.propietarios || []).forEach((o) => ["nombre", "numDoc"].forEach((k) => cambia(o, k)));
+  ["nombre", "direccion", "descripcion"].forEach((k) => cambia(x.piso, k));
+  mas(x.piso, "numHabitaciones");
+  ["habitacion", "iban", "domicilioPropietarios", "ciudadFirma", "motivoTemporada"].forEach((k) => cambia(x, k));
+  ["renta", "fianza"].forEach((k) => mas(x, k));
+  for (const s of [x.luz, x.agua, x.wifi]) {
+    mas(s, "cuota");
+    mas(s, "tope");
+  }
+  Object.values(x.gastos || {}).forEach((g) => mas(g, "importe"));
+  ["fechaInicio", "fechaFin", "fechaFirma", "fechaEntrega"].forEach((k) => fecha(x, k));
+  x.condiciones = { ...x.condiciones || {} };
+  const dia = parseInt(x.condiciones.diaPago, 10) || 7;
+  x.condiciones.diaPago = dia === 10 ? 11 : 10;
+  if (x.condiciones.ccaa) x.condiciones.ccaa = `\u03A9${++n}\u03A9`;
+  return x;
+}
+function trocear(a, b) {
+  const tok = (s) => s.split(/(\s+|[.,;:()«»"“”])/).filter((x) => x !== "");
+  const A = tok(a), B = tok(b);
+  const n = A.length, m = B.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i2 = n - 1; i2 >= 0; i2--) for (let j2 = m - 1; j2 >= 0; j2--)
+    L[i2][j2] = A[i2] === B[j2] ? L[i2 + 1][j2 + 1] + 1 : Math.max(L[i2 + 1][j2], L[i2][j2 + 1]);
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n) {
+    if (j < m && A[i] === B[j]) {
+      ops.push([true, A[i]]);
+      i++;
+      j++;
+    } else if (j < m && L[i][j + 1] >= L[i + 1][j]) j++;
+    else {
+      ops.push([false, A[i]]);
+      i++;
+    }
+  }
+  const out = [];
+  for (const [fijo, t] of ops) {
+    const ult = out[out.length - 1];
+    if (fijo) {
+      if (typeof ult === "string") out[out.length - 1] += t;
+      else out.push(t);
+    } else if (ult && typeof ult === "object") ult.t += t;
+    else if (typeof ult === "string" && out.length >= 2 && typeof out[out.length - 2] === "object" && /^[\s,]*(de|del|y)?[\s,]*$/.test(ult) && ult.length <= 5) {
+      out.pop();
+      out[out.length - 1].t += ult + t;
+    } else out.push({ t });
+  }
+  let k = 0;
+  out.forEach((x) => {
+    if (typeof x === "object") x.v = k++;
+  });
+  return out;
+}
+var patronDe = (partes) => partes.map((x) => typeof x === "string" ? x : x.v);
+var textoDe = (partes) => partes.map((x) => typeof x === "string" ? x : x.t).join("");
 async function vistaModelo(pl) {
   if (!PLANTILLAS[pl]) {
     location.hash = "#/ajustes";
@@ -2681,82 +2928,195 @@ async function vistaModelo(pl) {
   const a = await leerAjustes();
   const datos = await datosEjemploModelo(pl);
   const base = generarContrato(datos);
-  const sinNum = (t) => String(t || "").replace(/^[A-ZÁÉÍÓÚ]+\.\s*/, "");
-  const alternos = new Set(generarContrato(datosAlternos(datos)).map((b) => sinNum(b.text)));
-  const fijo = (b) => typeof b.text === "string" && alternos.has(sinNum(b.text));
-  let items = base.map((b, i) => ({ ...b, orig: i })).filter((b) => TIPOS_EDITABLES.includes(b.type));
-  for (const c of a.modelos?.[pl] || []) {
-    const buscado = sinNum(c.original ?? c.despuesDe);
-    const i = items.findIndex((b) => sinNum(b.text) === buscado);
-    if (i < 0) continue;
-    if (c.tipo === "reemplazar") items[i] = { ...items[i], type: c.bloque || items[i].type, text: c.nuevo };
-    else if (c.tipo === "quitar") items.splice(i, 1);
-    else if (c.tipo === "a\xF1adir") items.splice(i + 1, 0, { type: c.bloque || "p", text: c.nuevo, orig: null });
-  }
+  const alt = generarContrato(alternoHuecos(datos));
   const NOMBRE = { title: "T\xEDtulo", subtitle: "Subt\xEDtulo", heading: "Apartado", subheading: "Cl\xE1usula", p: "P\xE1rrafo" };
-  const esFijo = (b) => b.orig === null || fijo(base[b.orig]);
-  const pintarEditor = () => {
-    pintar(`${cabVolver("Editar modelo", PLANTILLAS[pl], "#/ajustes")}
-      <div class="seccion">
-        <p class="ayuda">Cambia, quita o a\xF1ade p\xE1rrafos y cl\xE1usulas. Se aplicar\xE1 a todos los contratos nuevos de este tipo; los ya generados no cambian. Las cl\xE1usulas se numeran solas.</p>
-        <p class="ayuda">Los p\xE1rrafos en gris llevan datos de cada contrato (nombres, importes, fechas\u2026) y no se pueden cambiar aqu\xED: se editan en cada contrato.</p>
-        ${items.map((b, i) => esFijo(b) ? `<div class="tarjeta" style="gap:8px;${b.orig === null ? "border:1.5px dashed var(--terracota)" : ""}">
-            <div class="fila"><span class="eti-campo">${NOMBRE[b.type]}${b.orig === null ? " \xB7 nuevo" : ""}</span>
-              <button type="button" class="btn peligro" data-quitar="${i}" style="min-height:32px;font-size:13px">Quitar</button></div>
-            <textarea data-i="${i}" rows="${Math.min(14, Math.max(2, Math.ceil(b.text.length / 34)))}" style="font-family:var(--sans);font-size:15px;line-height:1.5;border:1px solid var(--borde);border-radius:12px;padding:10px 12px;width:100%;${b.type !== "p" ? "font-weight:600;" : ""}">${esc(b.text)}</textarea>
-            ${botonesMas(i)}</div>` : `<div class="tarjeta" style="gap:6px;opacity:.6;background:transparent">
-            <span class="eti-campo">${NOMBRE[b.type]} \xB7 con datos de cada contrato</span>
-            <div style="font-size:14px;line-height:1.5;${b.type !== "p" ? "font-weight:600;" : ""}">${esc(b.text)}</div>
-            ${botonesMas(i)}</div>`).join("")}
-      </div>
-      <div class="acciones">
-        <button class="btn primario ancho" id="guardar">Guardar modelo</button>
-        <div class="dos"><a class="btn secundario" href="#/ajustes">Cancelar</a>
-          <button class="btn secundario" id="pdf">Ver en PDF</button></div>
-        <button class="btn fantasma" id="restaurar">Volver al modelo original</button>
-      </div>`, "ajustes");
-    $$("textarea[data-i]").forEach((t) => t.addEventListener("input", () => {
-      items[+t.dataset.i].text = t.value;
-    }));
-    $$("[data-quitar]").forEach((b) => b.onclick = () => {
-      items.splice(+b.dataset.quitar, 1);
-      pintarEditor();
-    });
-    $$("[data-mas]").forEach((b) => b.onclick = () => {
-      const i = +b.dataset.mas;
-      const nuevo = b.dataset.tipo === "subheading" ? { type: "subheading", text: "NUEVA. T\xEDtulo de la cl\xE1usula.", orig: null } : { type: "p", text: "", orig: null };
-      items.splice(i + 1, 0, nuevo);
-      if (b.dataset.tipo === "subheading") items.splice(i + 2, 0, { type: "p", text: "", orig: null });
-      pintarEditor();
-      const t = $(`textarea[data-i="${i + 1}"]`);
-      if (t) {
-        t.focus();
-        t.select();
-      }
-    });
-    const cambios = () => cambiosRespectoAlModelo(base, items.map((b) => ({ ...b, text: b.text.trim() })).filter((b) => b.text), datos);
-    $("#pdf").onclick = async () => {
-      const d = await datosModelo(pl);
-      d.cambiosModelo = cambios();
-      bajar(await construirPdf(generarContrato(d), null), `Modelo_${String(PLANTILLAS[pl]).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
-    };
-    $("#restaurar").onclick = async () => {
-      if (!preguntar("\xBFVolver al modelo original? Se pierden tus cambios en este modelo.")) return;
-      await setDoc(D("ajustes", "general"), { modelos: { ...a.modelos || {}, [pl]: [] } }, { merge: true });
-      aviso("Modelo original restaurado");
-      location.hash = "#/ajustes";
-    };
-    $("#guardar").onclick = async () => {
-      const lista = cambios();
-      await setDoc(D("ajustes", "general"), { modelos: { ...a.modelos || {}, [pl]: lista } }, { merge: true });
-      aviso(lista.length ? `Modelo guardado (${lista.length} cambio${lista.length > 1 ? "s" : ""})` : "Modelo guardado sin cambios");
-      location.hash = "#/ajustes";
-    };
+  const original = base.map((b, i) => {
+    if (!TIPOS_EDITABLES.includes(b.type)) return { type: b.type, fijo: true, i };
+    const t = sinOrdinal(b.text);
+    const otro = alt[i] && alt[i].type === b.type ? sinOrdinal(alt[i].text) : t;
+    return { type: b.type, i, partes: trocear(t, otro) };
+  });
+  let bloques = original.map((b) => ({ ...b, orig: b.i, partes: b.partes && b.partes.map((x) => typeof x === "string" ? x : { ...x }) }));
+  for (const c of a.modelos?.[pl] || []) {
+    const patron = c.patron ?? c.original ?? c.despuesDe;
+    let caps = null;
+    const i = bloques.findIndex((b) => b.partes && (caps = casar(textoDe(b.partes), patron)) !== null);
+    if (i < 0) continue;
+    const partesNuevas = (nuevo) => typeof nuevo === "string" ? [sinOrdinal(nuevo)] : nuevo.map((x) => typeof x === "number" ? { v: x, t: caps[x] } : x);
+    if (c.tipo === "reemplazar") bloques[i] = { ...bloques[i], type: c.bloque || bloques[i].type, partes: partesNuevas(c.nuevo) };
+    else if (c.tipo === "quitar") bloques.splice(i, 1);
+    else if (c.tipo === "a\xF1adir") bloques.splice(i + 1, 0, { type: c.bloque || "p", orig: null, partes: partesNuevas(c.nuevo) });
+  }
+  const htmlPartes = (partes) => partes.map((x) => typeof x === "string" ? esc(x) : `<span class="dato" contenteditable="false" data-v="${x.v}">${esc(x.t)}</span>`).join("");
+  const pintarDoc = () => {
+    let n = 0;
+    return bloques.map((b, k) => {
+      if (b.fijo) return `<div class="b-fijo">${b.type === "signatures" ? "Firmas de las partes" : "Anexo de fotos"}</div>`;
+      const num2 = b.type === "subheading" ? `<span class="num" contenteditable="false">${["PRIMERA", "SEGUNDA", "TERCERA", "CUARTA", "QUINTA", "SEXTA", "S\xC9PTIMA", "OCTAVA", "NOVENA", "D\xC9CIMA", "UND\xC9CIMA", "DUOD\xC9CIMA", "DECIMOTERCERA", "DECIMOCUARTA"][n++] || "NUEVA"}. </span>` : "";
+      return `<div class="b b-${b.type}${b.orig === null ? " nuevo" : ""}" data-k="${k}" contenteditable="true" spellcheck="true">${num2}${htmlPartes(b.partes)}</div>`;
+    }).join("");
   };
-  const botonesMas = (i) => `<div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="p" style="min-height:36px;flex:1">+ P\xE1rrafo debajo</button>
-      <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="subheading" style="min-height:36px;flex:1">+ Cl\xE1usula debajo</button></div>`;
-  pintarEditor();
+  pintar(`${cabVolver("Editar modelo", PLANTILLAS[pl], "#/ajustes")}
+    <div class="seccion">
+      <p class="ayuda">Escribe directamente sobre el contrato. Lo que est\xE1 en gris son datos de cada contrato (nombres, importes, fechas\u2026) y no se puede borrar. Pulsa Intro para a\xF1adir un p\xE1rrafo, o toca un p\xE1rrafo para ver m\xE1s opciones.</p>
+      <div class="doc-modelo" id="doc">${pintarDoc()}</div>
+    </div>
+    <div class="acciones">
+      <button class="btn primario ancho" id="guardar">Guardar modelo</button>
+      <div class="dos"><a class="btn secundario" href="#/ajustes">Cancelar</a><button class="btn secundario" id="pdf">Ver en PDF</button></div>
+      <button class="btn fantasma" id="restaurar">Volver al modelo original</button>
+    </div>`, "ajustes");
+  const doc2 = $("#doc");
+  const leer = (el) => {
+    const partes = [];
+    const push = (t) => {
+      t = t.replace(/ /g, " ");
+      if (!t) return;
+      if (typeof partes[partes.length - 1] === "string") partes[partes.length - 1] += t;
+      else partes.push(t);
+    };
+    const recorrer = (nodo) => nodo.childNodes.forEach((c) => {
+      if (c.nodeType === 3) push(c.textContent);
+      else if (c.classList?.contains("num")) {
+      } else if (c.classList?.contains("dato")) partes.push({ v: +c.dataset.v, t: c.textContent });
+      else if (c.nodeName === "BR") push(" ");
+      else recorrer(c);
+    });
+    recorrer(el);
+    if (typeof partes[0] === "string") partes[0] = partes[0].replace(/^\s+/, "");
+    const u = partes.length - 1;
+    if (typeof partes[u] === "string") partes[u] = partes[u].replace(/\s+$/, "");
+    return partes.filter((x) => x !== "");
+  };
+  const sincronizar = () => $$(".b[data-k]", doc2).forEach((el) => {
+    bloques[+el.dataset.k].partes = leer(el);
+  });
+  const repintar = (enfocar) => {
+    doc2.innerHTML = pintarDoc();
+    activar();
+    if (enfocar != null) {
+      const el = $(`.b[data-k="${enfocar}"]`, doc2);
+      if (el) {
+        el.focus();
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        r.collapse(false);
+        const s = getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+      }
+    }
+  };
+  const insertar = (k, type) => {
+    sincronizar();
+    const nuevos = type === "subheading" ? [{ type: "subheading", orig: null, partes: ["T\xEDtulo de la cl\xE1usula."] }, { type: "p", orig: null, partes: [""] }] : [{ type: "p", orig: null, partes: [""] }];
+    bloques.splice(k + 1, 0, ...nuevos);
+    repintar(k + 1);
+  };
+  const barra2 = document.createElement("div");
+  barra2.className = "barra-bloque";
+  barra2.innerHTML = `<button type="button" data-acc="p">+ P\xE1rrafo</button><button type="button" data-acc="subheading">+ Cl\xE1usula</button><button type="button" data-acc="quitar" class="peligro">Quitar</button>`;
+  barra2.addEventListener("mousedown", (e) => e.preventDefault());
+  barra2.addEventListener("click", (e) => {
+    const acc = e.target.closest("[data-acc]")?.dataset.acc;
+    const k = +barra2.dataset.k;
+    if (!acc || isNaN(k)) return;
+    if (acc === "quitar") {
+      sincronizar();
+      const b = bloques[k];
+      if (b.partes.some((x) => typeof x === "object") && !preguntar("Este p\xE1rrafo lleva datos del contrato. \xBFQuitarlo del modelo?")) return;
+      bloques.splice(k, 1);
+      repintar(Math.max(0, k - 1));
+    } else insertar(k, acc);
+  });
+  function activar() {
+    $$(".b[data-k]", doc2).forEach((el) => {
+      let ultimo = el.innerHTML;
+      const datos0 = el.querySelectorAll(".dato").length;
+      el.addEventListener("focus", () => {
+        barra2.dataset.k = el.dataset.k;
+        el.after(barra2);
+      });
+      el.addEventListener("input", () => {
+        if (el.querySelectorAll(".dato").length < datos0) {
+          el.innerHTML = ultimo;
+          aviso("Los datos en gris no se pueden borrar", true);
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          r.collapse(false);
+          const s = getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+          return;
+        }
+        ultimo = el.innerHTML;
+      });
+      el.addEventListener("keydown", (e) => {
+        const k = +el.dataset.k;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          insertar(k, "p");
+        } else if (e.key === "Backspace" && !el.textContent.trim() && bloques[k].orig === null) {
+          e.preventDefault();
+          sincronizar();
+          bloques.splice(k, 1);
+          repintar(Math.max(0, k - 1));
+        }
+      });
+      el.addEventListener("paste", (e) => {
+        e.preventDefault();
+        document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text/plain").replace(/\s*\n\s*/g, " "));
+      });
+    });
+  }
+  activar();
+  const cambios = () => {
+    sincronizar();
+    const lista = [];
+    const presentes = new Set(bloques.filter((b) => b.orig !== null && !b.fijo).map((b) => b.orig));
+    original.forEach((o) => {
+      if (!o.fijo && !presentes.has(o.i)) lista.push({ tipo: "quitar", patron: patronDe(o.partes) });
+    });
+    let ancla = null;
+    for (const b of bloques) {
+      if (b.fijo) continue;
+      const vacio = !textoDe(b.partes).trim();
+      const ord = b.type === "subheading" ? ["NUEVA. "] : [];
+      if (b.orig !== null) {
+        const o = original[b.orig];
+        const antes = patronDe(o.partes), despues = patronDe(b.partes);
+        if (vacio) {
+          lista.push({ tipo: "quitar", patron: antes });
+          continue;
+        }
+        if (JSON.stringify(antes) !== JSON.stringify(despues) || o.type !== b.type)
+          lista.push({ tipo: "reemplazar", patron: antes, nuevo: [...ord, ...despues], bloque: b.type });
+        ancla = despues;
+      } else if (!vacio && ancla) {
+        const nuevo = patronDe(b.partes);
+        lista.push({ tipo: "a\xF1adir", despuesDe: ancla, nuevo: [...ord, ...nuevo], bloque: b.type });
+        ancla = nuevo;
+      }
+    }
+    return lista;
+  };
+  $("#pdf").onclick = async () => {
+    const d = await datosEjemploModelo(pl);
+    d.cambiosModelo = cambios();
+    bajar(await construirPdf(generarContrato(d), null), `Modelo_${String(PLANTILLAS[pl]).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
+  };
+  $("#restaurar").onclick = async () => {
+    if (!preguntar("\xBFVolver al modelo original? Se pierden tus cambios en este modelo.")) return;
+    await setDoc(D("ajustes", "general"), { modelos: { ...a.modelos || {}, [pl]: [] } }, { merge: true });
+    aviso("Modelo original restaurado");
+    location.hash = "#/ajustes";
+  };
+  $("#guardar").onclick = async () => {
+    const lista = cambios();
+    await setDoc(D("ajustes", "general"), { modelos: { ...a.modelos || {}, [pl]: lista } }, { merge: true });
+    aviso(lista.length ? `Modelo guardado (${lista.length} cambio${lista.length > 1 ? "s" : ""})` : "Modelo guardado sin cambios");
+    location.hash = "#/ajustes";
+  };
 }
 var ROL_TEXTO = { arrendador: "Arrendador", arrendatario: "Arrendatario", fiador: "Fiador" };
 function bloquesDe(c) {
@@ -3707,16 +4067,15 @@ async function vistaAjustes() {
   const yo = String(usuario.email || "").toLowerCase();
   pintar(`${cabVolver("Ajustes")}
     <form class="seccion" id="f">
-      <div class="eti-campo">Propietarios</div>
-      <div class="seccion" style="padding:0" id="props"></div>
+      <details class="plegable"><summary>Propietarios</summary><div class="cuerpo"><div class="seccion" style="padding:0" id="props"></div></div></details>
 
-      <div class="eti-campo">Cobro y notificaciones</div>
+      <details class="plegable"><summary>Cobro y notificaciones</summary><div class="cuerpo">
       ${campo("Domicilio para notificaciones", "domicilio", a.domicilio)}
       ${campo("IBAN para el pago de la renta", "iban", a.iban, 'autocapitalize="characters" placeholder="ES00 0000 0000 0000 0000 0000"')}
       ${campo("Ciudad de firma por defecto", "ciudadFirma", a.ciudadFirma)}
-      ${selectCcaa(k.ccaa || "")}
+      ${selectCcaa(k.ccaa || "")}</div></details>
 
-      <div class="eti-campo">Contratos</div>
+      <details class="plegable"><summary>Condiciones de los contratos</summary><div class="cuerpo">
       <div class="rejilla">
         ${campo("D\xEDa l\xEDmite de pago (1-28)", "diaPago", k.diaPago || 7, 'type="number" min="1" max="28" inputmode="numeric"')}
         <label class="campo">Garant\xEDa adicional<select name="garantiaMeses">
@@ -3725,9 +4084,9 @@ async function vistaAjustes() {
       <label class="check"><input type="checkbox" name="clausulaLimpieza" ${k.clausulaLimpieza === false ? "" : "checked"}>
         <span>Incluir la cl\xE1usula de limpieza al devolver el piso (contratos de estudiantes)</span></label>
       <label class="campo">Cl\xE1usulas adicionales (se a\xF1aden a todos tus contratos; separa cada una con una l\xEDnea en blanco)
-        <textarea name="clausulasExtra" rows="5" placeholder="Por ejemplo: No se permiten mascotas sin autorizaci\xF3n escrita del arrendador.">${esc(k.clausulasExtra || "")}</textarea></label>
+        <textarea name="clausulasExtra" rows="5" placeholder="Por ejemplo: No se permiten mascotas sin autorizaci\xF3n escrita del arrendador.">${esc(k.clausulasExtra || "")}</textarea></label></div></details>
 
-      <div class="eti-campo">Modelos de contrato</div>
+      <details class="plegable"><summary>Modelos de contrato</summary><div class="cuerpo">
       <p class="ayuda">Edita el texto base de cada tipo de contrato: cambia cl\xE1usulas, quita las que no uses o a\xF1ade las tuyas.</p>
       ${[...MODELOS_EDITABLES, ...Object.keys(a.modelos || {}).filter((pl) => !MODELOS_EDITABLES.includes(pl) && a.modelos[pl]?.length)].map((pl) => {
     const n = (a.modelos?.[pl] || []).length;
@@ -3737,20 +4096,19 @@ async function vistaAjustes() {
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
             ${MODELOS_EDITABLES.includes(pl) ? `<a class="btn secundario" href="#/modelo/${pl}" style="min-height:36px">Editar</a>` : ""}
             ${n ? `<button type="button" class="btn peligro" data-borrar-modelo="${pl}" style="min-height:36px">Restaurar</button>` : ""}</div></div></div>`;
-  }).join("")}
+  }).join("")}</div></details>
 
-      <div class="eti-campo">Google Drive</div>
+      <details class="plegable"><summary>Google Drive</summary><div class="cuerpo">
       ${CONFIG.driveCompleto === false ? '<input type="hidden" name="modoDrive" value="propia">' : segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin conectar")}</div>
         <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
         <button type="button" class="btn secundario" id="elegir">${(a.modoDrive || "propia") === "completo" ? "Elegir" : "Conectar"}</button></div></div>
       <input type="hidden" name="carpetaDriveId" value="${esc(a.carpetaDriveId || "")}">
-      <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}">
+      <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}"></div></details>
     </form>
     <div class="acciones"><button class="btn primario ancho" id="guardar">Guardar</button></div>
 
-    <div class="titulo-seccion"><h2>Equipo</h2></div>
-    <div class="seccion">
+    <div class="seccion"><details class="plegable"><summary>Equipo</summary><div class="cuerpo">
       <p class="ayuda">Las personas de tu equipo ven y gestionan todos los pisos, inquilinos y contratos de esta cuenta. Entran con su cuenta de Google.</p>
       ${(cuenta?.emailsMiembros || []).map((e) => {
     const activo = Object.values(cuenta.correos || {}).includes(e);
@@ -3761,16 +4119,15 @@ async function vistaAjustes() {
       <div class="rejilla" style="grid-template-columns:1fr auto">
         ${campo("Email de Google de la otra persona", "nuevoMiembro", "", 'type="email" id="nuevo-miembro" placeholder="nombre@gmail.com"')}
         <button class="btn secundario" id="invitar" style="align-self:end">A\xF1adir</button>
-      </div>
+      </div></div></details>
     </div>
 
-    <div class="titulo-seccion"><h2>Privacidad y datos</h2></div>
-    <div class="seccion">
+    <div class="seccion"><details class="plegable"><summary>Privacidad y datos</summary><div class="cuerpo">
       <div class="tarjeta" style="gap:6px">
         ${Object.entries(LEGALES).map(([k2, t]) => `<a href="#/legal/${k2}" style="font-size:14px">${t}</a>`).join("")}
       </div>
       ${DEMO ? "" : '<button class="btn secundario" id="exportar">Descargar una copia de mis datos</button>'}
-      ${esTitular ? `<button class="btn peligro" id="borrar-cuenta">Borrar mi cuenta y todos sus datos</button><div id="confirmar-borrado"></div>` : `<button class="btn peligro" id="salir-equipo">Salir de este equipo</button>`}
+      ${esTitular ? `<button class="btn peligro" id="borrar-cuenta">Borrar mi cuenta y todos sus datos</button><div id="confirmar-borrado"></div>` : `<button class="btn peligro" id="salir-equipo">Salir de este equipo</button>`}</div></details>
     </div>
 
     ${await esAdmin() ? '<div class="seccion"><a class="btn salvia" href="#/admin">Panel de administraci\xF3n (beta)</a></div>' : ""}

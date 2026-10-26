@@ -93,23 +93,50 @@ export function renumerar(bloques) {
     ? { ...b, text: b.text.replace(RE_CLAUSULA, `${ORDINALES[n++] || "CLÁUSULA " + n}. `) } : b));
 }
 
+/** Texto de un bloque sin el ordinal de cláusula (PRIMERA., SEGUNDA.…). */
+export function sinOrdinal(t) { return String(t || "").replace(RE_CLAUSULA, ""); }
+
+const escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
- * Cambios guardados en el modelo de un propietario. Se aplican sobre los
- * párrafos fijos del modelo (los que no llevan datos de cada contrato):
- *   { tipo: "reemplazar", original, nuevo, bloque }  cambia un párrafo
- *   { tipo: "quitar", original }                      lo elimina
- *   { tipo: "añadir", despuesDe, nuevo, bloque }       inserta uno nuevo detrás
+ * ¿Encaja el texto con el patrón? Un patrón es un texto fijo o una lista de
+ * trozos fijos (texto) y huecos (números) donde van los datos de cada contrato.
+ * Devuelve los datos de los huecos (o [] si no hay) o null si no encaja.
+ */
+export function casar(texto, patron) {
+  const t = sinOrdinal(texto);
+  if (typeof patron === "string") return t === sinOrdinal(patron) ? [] : null;
+  const n = Math.max(-1, ...patron.filter(x => typeof x === "number"));
+  const orden = [];
+  const re = new RegExp("^" + patron.map(x => (typeof x === "number" ? (orden.push(x), "([\\s\\S]+?)") : escRe(x))).join("") + "$");
+  const m = t.match(re);
+  if (!m) return null;
+  const caps = Array(n + 1).fill("");
+  orden.forEach((k, i) => (caps[k] = m[i + 1]));
+  return caps;
+}
+
+function rellenar(nuevo, caps) {
+  return typeof nuevo === "string" ? nuevo : nuevo.map(x => (typeof x === "number" ? caps[x] ?? "" : x)).join("");
+}
+
+/**
+ * Cambios guardados en el modelo de un propietario, en orden:
+ *   { tipo: "reemplazar", patron | original, nuevo, bloque }  cambia un párrafo
+ *   { tipo: "quitar", patron | original }                      lo elimina
+ *   { tipo: "añadir", despuesDe, nuevo, bloque }                inserta uno nuevo detrás
+ * Los patrones con huecos permiten cambiar también párrafos con datos de cada contrato.
  */
 export function aplicarCambios(bloques, cambios) {
   let out = bloques.map(b => ({ ...b }));
   for (const c of cambios || []) {
-    const sinNum = (t) => String(t || "").replace(RE_CLAUSULA, "");
-    const buscado = sinNum(c.original ?? c.despuesDe);
-    const i = out.findIndex(b => typeof b.text === "string" && sinNum(b.text) === buscado);
+    const patron = c.patron ?? c.original ?? c.despuesDe;
+    let caps = null;
+    const i = out.findIndex(b => typeof b.text === "string" && (caps = casar(b.text, patron)) !== null);
     if (i < 0) continue;
-    if (c.tipo === "reemplazar") out[i] = { type: c.bloque || out[i].type, text: c.nuevo };
+    if (c.tipo === "reemplazar") out[i] = { type: c.bloque || out[i].type, text: rellenar(c.nuevo, caps) };
     else if (c.tipo === "quitar") out.splice(i, 1);
-    else if (c.tipo === "añadir") out.splice(i + 1, 0, { type: c.bloque || "p", text: c.nuevo });
+    else if (c.tipo === "añadir") out.splice(i + 1, 0, { type: c.bloque || "p", text: rellenar(c.nuevo, caps) });
   }
   return renumerar(out);
 }
@@ -226,8 +253,8 @@ function suministros(datos) {
   const l = datos.luz || { opcion: "D" };
   const luz = { opcion: { A: "titularidad", B: "cuota", C: "regularizacion", D: "incluida" }[l.opcion] || "incluida", cuota: l.cuota, tope: l.tope };
   const agua = { opcion: datos.plantilla === "larga_duracion" ? "cuota" : "incluida", ...(datos.agua || {}) };
-  const wifi = { opcion: datos.plantilla === "larga_duracion" ? "titularidad" : "incluida", ...(datos.wifi || {}) };
-  return { luz, agua, wifi };
+  const wifi = { opcion: datos.plantilla === "larga_duracion" ? "nomencionar" : "incluida", ...(datos.wifi || {}) };
+  return wifi.opcion === "nomencionar" ? { luz, agua } : { luz, agua, wifi };
 }
 
 /** Cuotas fijas mensuales que se suman a la renta: [[clave, importe]]. */
@@ -261,7 +288,7 @@ function textoSuministros(datos, c, esHab) {
         ? `${base}; en cuanto a la energía eléctrica, siempre que el importe mensual de la factura de electricidad del conjunto de la vivienda no supere los ${euros(topeLuz)}. En caso de superarse dicho límite, el exceso será de cuenta de los arrendatarios de la vivienda, repercutiéndose a partes iguales entre las habitaciones arrendadas, debiendo ${ARR} abonar a EL ARRENDADOR la parte que le corresponda conforme a las facturas que le sean facilitadas.`
         : `${base}; en cuanto a la energía eléctrica, siempre que el importe mensual de la factura de electricidad no supere los ${euros(topeLuz)}. En caso de superarse dicho límite, el exceso será de cuenta de ${ARR}, que ${v("deberá", "deberán")} abonarlo a EL ARRENDADOR conforme a las facturas que le${c.varios ? "s" : ""} sean facilitadas.`);
     } else {
-      out.push(`${base}${incl.length === 3 ? `, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos` : ""}.`);
+      out.push(`${base}${incl.length > 1 && incl.length === Object.keys(s).length ? `, sin que ${ARR} ${v("deba", "deban")} realizar pago adicional alguno por dichos conceptos` : ""}.`);
     }
   }
   const tit = de("titularidad");

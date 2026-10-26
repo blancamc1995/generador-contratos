@@ -235,3 +235,28 @@ label.campo { display: flex; flex-direction: column; gap: 6px; font-size: 13px; 
 .btn-info { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--burdeos); background: transparent; color: var(--burdeos);
   font: italic 700 13px/1 Georgia, serif; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
 .btn-info:hover { background: var(--burdeos); color: #fff; }
+
+/* Editor de modelos: el contrato como un documento */
+.doc-modelo { background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 22px 18px; font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px; line-height: 1.6; color: var(--tinta); }
+.doc-modelo .b { outline: none; padding: 3px 6px; margin: 0 -6px 8px; border-radius: 6px; text-align: justify; min-height: 1.6em; }
+.doc-modelo .b:focus { background: var(--terracota-claro); }
+.doc-modelo .b.nuevo { border-left: 3px solid var(--terracota); }
+.doc-modelo .b-title { text-align: center; font-weight: 700; font-size: 16px; }
+.doc-modelo .b-subtitle { text-align: center; font-style: italic; font-size: 14px; }
+.doc-modelo .b-heading { font-weight: 700; margin-top: 16px; }
+.doc-modelo .b-subheading { font-weight: 700; margin-top: 12px; text-align: left; }
+.doc-modelo .dato { background: #ECE5DC; color: var(--suave); border-radius: 4px; padding: 0 3px; font-family: var(--sans); font-size: 13.5px; user-select: none; -webkit-user-select: none; }
+.doc-modelo .num { color: var(--suave); user-select: none; -webkit-user-select: none; }
+.doc-modelo .b-fijo { margin: 16px 0 4px; padding: 10px; border: 1px dashed var(--borde); border-radius: 8px; text-align: center; color: var(--suave); font-family: var(--sans); font-size: 13px; }
+.barra-bloque { display: flex; gap: 6px; margin: -4px 0 10px; font-family: var(--sans); }
+.barra-bloque button { border: 1px solid var(--borde); background: var(--tarjeta); color: var(--tinta); border-radius: 999px; padding: 6px 12px; font: 500 13px var(--sans); cursor: pointer; }
+.barra-bloque button.peligro { color: var(--burdeos); }
+
+/* Ajustes plegables */
+details.plegable { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px; }
+details.plegable > summary { list-style: none; cursor: pointer; padding: 16px 18px; font-family: var(--serif); font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+details.plegable > summary::-webkit-details-marker { display: none; }
+details.plegable > summary::after { content: "+"; font-family: var(--sans); font-size: 22px; color: var(--terracota); line-height: 1; }
+details.plegable[open] > summary::after { content: "–"; }
+details.plegable > .cuerpo { padding: 0 18px 18px; display: flex; flex-direction: column; gap: 12px; }

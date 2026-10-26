@@ -2,7 +2,7 @@ import { CONFIG } from "./firebase-config.js";
 import { DEMO, auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut,
   doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, getDocs, query, orderBy, where,
   serverTimestamp, arrayUnion } from "./datos.js";
-import { generarContrato, firmantesDe, fechaLarga, euros, MESES, renumerar, esTemporada, porHabitacion } from "./contratos.js";
+import { generarContrato, firmantesDe, fechaLarga, euros, MESES, renumerar, esTemporada, porHabitacion, sinOrdinal, casar } from "./contratos.js";
 import { construirPdf, descargar } from "./pdf.js";
 import * as drive from "./drive.js";
 import { D, C, CID, fijarCuenta, resolverCuenta, leerCuenta, invitarMiembro, quitarMiembro, cuentaDeEnlace, esAdmin, cuentaActiva, solicitarAcceso, listarCuentas, activarCuenta, desactivarCuenta } from "./cuenta.js";
@@ -157,7 +157,7 @@ async function datosModelo(pl, extra = {}) {
 /** Resumen corto de los suministros pactados. */
 function resumenSuministros(x) {
   const imp = (s) => `cuota ${euros(s.cuota)}${s.tope ? ` con tope ${euros(s.tope)}` : ""}`;
-  const t = (s) => !s || s.opcion === "incluida" ? "incluida" : s.opcion === "titularidad" ? "a nombre del inquilino" : imp(s);
+  const t = (s) => !s || s.opcion === "incluida" ? "incluida" : s.opcion === "titularidad" ? "a nombre del inquilino" : s.opcion === "nomencionar" ? "no se menciona" : imp(s);
   const l = x.luz || { opcion: "D" };
   const luz = l.opcion === "A" ? "a nombre del inquilino" : l.opcion === "D" ? `incluida${l.tope ? ` (tope ${euros(l.tope)})` : ""}` : imp(l);
   return `Luz ${luz} · agua ${t(x.agua)} · wifi ${t(x.wifi)}`;
@@ -438,36 +438,47 @@ function activarLuz(root) {
   ajustar();
 }
 
-/** Agua o internet: incluido en el precio o aparte (cambio de titularidad o cuota fija con tope). */
-function camposSuministro(clave, titulo, s = { opcion: "incluida" }) {
+/** Agua: incluida en el precio o aparte (cambio de titularidad o cuota fija). */
+function camposAgua(s = { opcion: "incluida" }) {
   const aparte = s.opcion && s.opcion !== "incluida";
-  return `<div class="tarjeta" data-suministro="${clave}" style="gap:10px">
-    <div class="nombre" style="font-size:14px">${titulo}</div>
-    <label class="check"><input type="checkbox" name="${clave}Aparte" ${aparte ? "checked" : ""}> Se paga aparte (no va incluido en el precio)</label>
+  return `<div class="tarjeta" data-suministro="agua" style="gap:10px">
+    <div class="nombre" style="font-size:14px">Agua</div>
+    <label class="check"><input type="checkbox" name="aguaAparte" ${aparte ? "checked" : ""}> Se paga aparte (no va incluida en el precio)</label>
     <div data-aparte class="seccion" style="padding:0;gap:8px">
-      ${segmento(`${clave}Opcion`, [["titularidad", "Cambio de titularidad"], ["cuota", "Cuota fija con tope"]], s.opcion === "cuota" ? "cuota" : "titularidad")}
-      <div class="rejilla" data-cuota>
-        ${campo("Cuota fija mensual (€)", `${clave}Cuota`, s.cuota ?? "", 'inputmode="decimal"')}
-        ${campo("Tope mensual (€, opcional)", `${clave}Tope`, s.tope ?? "", 'inputmode="decimal"')}
-      </div></div></div>`;
+      ${segmento("aguaOpcion", [["titularidad", "Cambio de titularidad"], ["cuota", "Cuota fija"]], s.opcion === "cuota" ? "cuota" : "titularidad")}
+      <div data-cuota>${campo("Cuota fija mensual (€)", "aguaCuota", s.cuota ?? "", 'inputmode="decimal"')}</div>
+    </div></div>`;
+}
+
+/** Wifi: si se menciona en el contrato, incluido en el precio o a nombre del inquilino. */
+function camposWifi(s = { opcion: "incluida" }) {
+  const menciona = s.opcion && s.opcion !== "nomencionar";
+  return `<div class="tarjeta" data-suministro="wifi" style="gap:10px">
+    <div class="nombre" style="font-size:14px">Internet (wifi)</div>
+    <label class="check"><input type="checkbox" name="wifiAparte" ${menciona ? "checked" : ""}> Mencionar el wifi en el contrato</label>
+    <div data-aparte class="seccion" style="padding:0;gap:8px">
+      ${segmento("wifiOpcion", [["incluida", "Incluido en el precio"], ["titularidad", "Cambio de titularidad"]], s.opcion === "titularidad" ? "titularidad" : "incluida")}
+    </div></div>`;
 }
 
 function activarSuministros(root) {
   const ajustar = () => $$("[data-suministro]", root).forEach(t => {
     const k = t.dataset.suministro;
-    const ap = $(`[name=${k}Aparte]`, t).checked;
-    $("[data-aparte]", t).style.display = ap ? "" : "none";
-    $("[data-cuota]", t).style.display = $(`[name=${k}Opcion]`, t).value === "cuota" ? "" : "none";
+    $("[data-aparte]", t).style.display = $(`[name=${k}Aparte]`, t).checked ? "" : "none";
+    const c = $("[data-cuota]", t);
+    if (c) c.style.display = $(`[name=${k}Opcion]`, t).value === "cuota" ? "" : "none";
   });
   root.addEventListener("change", ajustar);
   ajustar();
 }
 
 function leerSuministro(root, k) {
-  if (!$(`[name=${k}Aparte]`, root)?.checked) return { opcion: "incluida" };
   const v = (n) => ($(`[name="${k}${n}"]`, root)?.value ?? "").trim();
+  const marcado = $(`[name=${k}Aparte]`, root)?.checked;
+  if (k === "wifi") return marcado ? { opcion: v("Opcion") || "incluida" } : { opcion: "nomencionar" };
+  if (!marcado) return { opcion: "incluida" };
   const opcion = v("Opcion") || "titularidad";
-  return opcion === "cuota" ? { opcion, cuota: v("Cuota"), tope: v("Tope") } : { opcion };
+  return opcion === "cuota" ? { opcion, cuota: v("Cuota") } : { opcion };
 }
 
 /** Convierte varias fotos en un único PDF (una por página, reducidas para que pese poco). */
@@ -525,8 +536,8 @@ async function vistaPiso(id) {
       ${campo("Renta habitual (€)", "renta", p.renta ?? "", 'inputmode="decimal"')}
       ${drive.modo() === "completo" ? campo("Nombre de su carpeta de facturas en Drive (si es distinto)", "carpetaFacturas", p.carpetaFacturas || "", 'placeholder="Facturas piso centro"') : `<input type="hidden" name="carpetaFacturas" value="${esc(p.carpetaFacturas || "")}">`}
       ${camposLuz(p.luz || { opcion: p.plantilla === "larga_duracion" ? "A" : "D" })}
-      ${camposSuministro("agua", "Agua", p.agua || { opcion: p.plantilla === "larga_duracion" ? "cuota" : "incluida" })}
-      ${camposSuministro("wifi", "Internet (wifi)", p.wifi || { opcion: p.plantilla === "larga_duracion" ? "titularidad" : "incluida" })}
+      ${camposAgua(p.agua || { opcion: p.plantilla === "larga_duracion" ? "cuota" : "incluida" })}
+      ${camposWifi(p.wifi || { opcion: p.plantilla === "larga_duracion" ? "nomencionar" : "incluida" })}
       <div data-solo-piso class="seccion" style="padding:0">
         <div class="eti-campo">Gastos de la vivienda</div>
         <p class="ayuda">Por ley los paga el propietario, salvo que pactéis que los asuma el inquilino indicando su importe anual (art. 20 LAU).</p>
@@ -605,7 +616,6 @@ async function vistaPiso(id) {
     const cond = leerCondiciones(f);
     if ((cond.luz.opcion === "B" || cond.luz.opcion === "C") && !cond.luz.cuota) return aviso("Falta la cuota fija de la luz", true);
     if (cond.agua.opcion === "cuota" && !cond.agua.cuota) return aviso("Falta la cuota fija del agua", true);
-    if (cond.wifi.opcion === "cuota" && !cond.wifi.cuota) return aviso("Falta la cuota fija del wifi", true);
     const gastos = {};
     for (const g of ["comunidad", "ibi", "basura"]) gastos[g] = { quien: v(`gasto_${g}`) || "arrendador", importe: v(`gasto_${g}_importe`) };
     if (!porHabitacion(tipo) && Object.values(gastos).some(g => g.quien === "arrendatario" && !g.importe))
@@ -710,7 +720,7 @@ async function vistaNueva() {
       motivoTemporada: esTemporada(pl) ? v("motivoTemporada") : "",
       luz: piso.luz || { opcion: pl === "larga_duracion" ? "A" : "D" },
       agua: piso.agua || { opcion: pl === "larga_duracion" ? "cuota" : "incluida" },
-      wifi: piso.wifi || { opcion: pl === "larga_duracion" ? "titularidad" : "incluida" },
+      wifi: piso.wifi || { opcion: pl === "larga_duracion" ? "nomencionar" : "incluida" },
       estado: "abierta", respuestas: 0, creada: serverTimestamp(), creadaPor: usuario.email,
       arrendadores: (ajustesNueva.propietarios || []).map(p => p.nombre).filter(Boolean).join(" y "),
     };
@@ -1168,82 +1178,239 @@ async function datosEjemploModelo(pl) {
   return d;
 }
 
+/** Los mismos datos con cada valor sustituido por otro distinto, para localizar dónde va cada dato en el texto. */
+function alternoHuecos(d) {
+  const x = JSON.parse(JSON.stringify(d));
+  let n = 0;
+  const cambia = (o, k) => { if (o && o[k]) o[k] = `Ω${++n}Ω`; };
+  const mas = (o, k) => { if (o && o[k] !== undefined && o[k] !== "" && o[k] !== null) o[k] = String((parseFloat(String(o[k]).replace(",", ".")) || 0) + 7.37); };
+  const fecha = (o, k) => {
+    if (!o?.[k]) return;
+    const [y, m, dd] = o[k].split("-").map(Number);
+    o[k] = `${y + 3}-${String(m === 11 ? 10 : 11).padStart(2, "0")}-${dd === 15 ? "16" : "15"}`;
+  };
+  (x.inquilinos || []).forEach(i => { ["nombre", "numDoc", "domicilio"].forEach(k => cambia(i, k)); (i.avales || []).forEach(a => ["nombre", "numDoc", "parentesco"].forEach(k => cambia(a, k))); });
+  (x.propietarios || []).forEach(o => ["nombre", "numDoc"].forEach(k => cambia(o, k)));
+  ["nombre", "direccion", "descripcion"].forEach(k => cambia(x.piso, k));
+  mas(x.piso, "numHabitaciones");
+  ["habitacion", "iban", "domicilioPropietarios", "ciudadFirma", "motivoTemporada"].forEach(k => cambia(x, k));
+  ["renta", "fianza"].forEach(k => mas(x, k));
+  for (const s of [x.luz, x.agua, x.wifi]) { mas(s, "cuota"); mas(s, "tope"); }
+  Object.values(x.gastos || {}).forEach(g => mas(g, "importe"));
+  ["fechaInicio", "fechaFin", "fechaFirma", "fechaEntrega"].forEach(k => fecha(x, k));
+  x.condiciones = { ...(x.condiciones || {}) };
+  const dia = parseInt(x.condiciones.diaPago, 10) || 7;
+  x.condiciones.diaPago = dia === 10 ? 11 : 10;
+  if (x.condiciones.ccaa) x.condiciones.ccaa = `Ω${++n}Ω`;
+  return x;
+}
+
+/**
+ * Parte un texto en trozos fijos y huecos con datos comparándolo con el mismo
+ * texto generado con otros datos. Devuelve [texto | {v: n.º de hueco, t: valor}].
+ */
+function trocear(a, b) {
+  const tok = (s) => s.split(/(\s+|[.,;:()«»"“”])/).filter(x => x !== "");
+  const A = tok(a), B = tok(b);
+  const n = A.length, m = B.length;
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n) {
+    if (j < m && A[i] === B[j]) { ops.push([true, A[i]]); i++; j++; }
+    else if (j < m && L[i][j + 1] >= L[i + 1][j]) j++;
+    else { ops.push([false, A[i]]); i++; }
+  }
+  // Agrupar: huecos seguidos (o separados solo por " de ", ", ", espacios…) forman un único dato.
+  const out = [];
+  for (const [fijo, t] of ops) {
+    const ult = out[out.length - 1];
+    if (fijo) { if (typeof ult === "string") out[out.length - 1] += t; else out.push(t); }
+    else if (ult && typeof ult === "object") ult.t += t;
+    else if (typeof ult === "string" && out.length >= 2 && typeof out[out.length - 2] === "object" && /^[\s,]*(de|del|y)?[\s,]*$/.test(ult) && ult.length <= 5) {
+      out.pop(); out[out.length - 1].t += ult + t;
+    } else out.push({ t });
+  }
+  let k = 0;
+  out.forEach(x => { if (typeof x === "object") x.v = k++; });
+  return out;
+}
+
+const patronDe = (partes) => partes.map(x => (typeof x === "string" ? x : x.v));
+const textoDe = (partes) => partes.map(x => (typeof x === "string" ? x : x.t)).join("");
+
 async function vistaModelo(pl) {
   if (!PLANTILLAS[pl]) { location.hash = "#/ajustes"; return; }
   const a = await leerAjustes();
   const datos = await datosEjemploModelo(pl);
   const base = generarContrato(datos);
-  const sinNum = (t) => String(t || "").replace(/^[A-ZÁÉÍÓÚ]+\.\s*/, "");
-  const alternos = new Set(generarContrato(datosAlternos(datos)).map(b => sinNum(b.text)));
-  const fijo = (b) => typeof b.text === "string" && alternos.has(sinNum(b.text));
-
-  // Partir del modelo base y aplicar los cambios guardados recordando de qué párrafo viene cada uno.
-  let items = base.map((b, i) => ({ ...b, orig: i })).filter(b => TIPOS_EDITABLES.includes(b.type));
-  for (const c of a.modelos?.[pl] || []) {
-    const buscado = sinNum(c.original ?? c.despuesDe);
-    const i = items.findIndex(b => sinNum(b.text) === buscado);
-    if (i < 0) continue;
-    if (c.tipo === "reemplazar") items[i] = { ...items[i], type: c.bloque || items[i].type, text: c.nuevo };
-    else if (c.tipo === "quitar") items.splice(i, 1);
-    else if (c.tipo === "añadir") items.splice(i + 1, 0, { type: c.bloque || "p", text: c.nuevo, orig: null });
-  }
+  const alt = generarContrato(alternoHuecos(datos));
   const NOMBRE = { title: "Título", subtitle: "Subtítulo", heading: "Apartado", subheading: "Cláusula", p: "Párrafo" };
-  const esFijo = (b) => b.orig === null || fijo(base[b.orig]);
 
-  const pintarEditor = () => {
-    pintar(`${cabVolver("Editar modelo", PLANTILLAS[pl], "#/ajustes")}
-      <div class="seccion">
-        <p class="ayuda">Cambia, quita o añade párrafos y cláusulas. Se aplicará a todos los contratos nuevos de este tipo; los ya generados no cambian. Las cláusulas se numeran solas.</p>
-        <p class="ayuda">Los párrafos en gris llevan datos de cada contrato (nombres, importes, fechas…) y no se pueden cambiar aquí: se editan en cada contrato.</p>
-        ${items.map((b, i) => esFijo(b) ? `<div class="tarjeta" style="gap:8px;${b.orig === null ? "border:1.5px dashed var(--terracota)" : ""}">
-            <div class="fila"><span class="eti-campo">${NOMBRE[b.type]}${b.orig === null ? " · nuevo" : ""}</span>
-              <button type="button" class="btn peligro" data-quitar="${i}" style="min-height:32px;font-size:13px">Quitar</button></div>
-            <textarea data-i="${i}" rows="${Math.min(14, Math.max(2, Math.ceil(b.text.length / 34)))}" style="font-family:var(--sans);font-size:15px;line-height:1.5;border:1px solid var(--borde);border-radius:12px;padding:10px 12px;width:100%;${b.type !== "p" ? "font-weight:600;" : ""}">${esc(b.text)}</textarea>
-            ${botonesMas(i)}</div>`
-          : `<div class="tarjeta" style="gap:6px;opacity:.6;background:transparent">
-            <span class="eti-campo">${NOMBRE[b.type]} · con datos de cada contrato</span>
-            <div style="font-size:14px;line-height:1.5;${b.type !== "p" ? "font-weight:600;" : ""}">${esc(b.text)}</div>
-            ${botonesMas(i)}</div>`).join("")}
-      </div>
-      <div class="acciones">
-        <button class="btn primario ancho" id="guardar">Guardar modelo</button>
-        <div class="dos"><a class="btn secundario" href="#/ajustes">Cancelar</a>
-          <button class="btn secundario" id="pdf">Ver en PDF</button></div>
-        <button class="btn fantasma" id="restaurar">Volver al modelo original</button>
-      </div>`, "ajustes");
-    $$("textarea[data-i]").forEach(t => t.addEventListener("input", () => { items[+t.dataset.i].text = t.value; }));
-    $$("[data-quitar]").forEach(b => (b.onclick = () => { items.splice(+b.dataset.quitar, 1); pintarEditor(); }));
-    $$("[data-mas]").forEach(b => (b.onclick = () => {
-      const i = +b.dataset.mas;
-      const nuevo = b.dataset.tipo === "subheading" ? { type: "subheading", text: "NUEVA. Título de la cláusula.", orig: null } : { type: "p", text: "", orig: null };
-      items.splice(i + 1, 0, nuevo);
-      if (b.dataset.tipo === "subheading") items.splice(i + 2, 0, { type: "p", text: "", orig: null });
-      pintarEditor();
-      const t = $(`textarea[data-i="${i + 1}"]`); if (t) { t.focus(); t.select(); }
-    }));
-    const cambios = () => cambiosRespectoAlModelo(base, items.map(b => ({ ...b, text: b.text.trim() })).filter(b => b.text), datos);
-    $("#pdf").onclick = async () => {
-      const d = await datosModelo(pl);
-      d.cambiosModelo = cambios();
-      bajar(await construirPdf(generarContrato(d), null), `Modelo_${String(PLANTILLAS[pl]).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
-    };
-    $("#restaurar").onclick = async () => {
-      if (!preguntar("¿Volver al modelo original? Se pierden tus cambios en este modelo.")) return;
-      await setDoc(D("ajustes", "general"), { modelos: { ...(a.modelos || {}), [pl]: [] } }, { merge: true });
-      aviso("Modelo original restaurado");
-      location.hash = "#/ajustes";
-    };
-    $("#guardar").onclick = async () => {
-      const lista = cambios();
-      await setDoc(D("ajustes", "general"), { modelos: { ...(a.modelos || {}), [pl]: lista } }, { merge: true });
-      aviso(lista.length ? `Modelo guardado (${lista.length} cambio${lista.length > 1 ? "s" : ""})` : "Modelo guardado sin cambios");
-      location.hash = "#/ajustes";
-    };
+  // Bloques del modelo original, troceados en texto fijo y datos.
+  const original = base.map((b, i) => {
+    if (!TIPOS_EDITABLES.includes(b.type)) return { type: b.type, fijo: true, i };
+    const t = sinOrdinal(b.text);
+    const otro = alt[i] && alt[i].type === b.type ? sinOrdinal(alt[i].text) : t;
+    return { type: b.type, i, partes: trocear(t, otro) };
+  });
+  // Estado del editor: el original con los cambios ya guardados aplicados.
+  let bloques = original.map(b => ({ ...b, orig: b.i, partes: b.partes && b.partes.map(x => (typeof x === "string" ? x : { ...x })) }));
+  for (const c of a.modelos?.[pl] || []) {
+    const patron = c.patron ?? c.original ?? c.despuesDe;
+    let caps = null;
+    const i = bloques.findIndex(b => b.partes && (caps = casar(textoDe(b.partes), patron)) !== null);
+    if (i < 0) continue;
+    const partesNuevas = (nuevo) => (typeof nuevo === "string" ? [sinOrdinal(nuevo)] : nuevo.map(x => (typeof x === "number" ? { v: x, t: caps[x] } : x)));
+    if (c.tipo === "reemplazar") bloques[i] = { ...bloques[i], type: c.bloque || bloques[i].type, partes: partesNuevas(c.nuevo) };
+    else if (c.tipo === "quitar") bloques.splice(i, 1);
+    else if (c.tipo === "añadir") bloques.splice(i + 1, 0, { type: c.bloque || "p", orig: null, partes: partesNuevas(c.nuevo) });
+  }
+
+  const htmlPartes = (partes) => partes.map(x => (typeof x === "string" ? esc(x) : `<span class="dato" contenteditable="false" data-v="${x.v}">${esc(x.t)}</span>`)).join("");
+  const pintarDoc = () => {
+    let n = 0;
+    return bloques.map((b, k) => {
+      if (b.fijo) return `<div class="b-fijo">${b.type === "signatures" ? "Firmas de las partes" : "Anexo de fotos"}</div>`;
+      const num = b.type === "subheading" ? `<span class="num" contenteditable="false">${["PRIMERA", "SEGUNDA", "TERCERA", "CUARTA", "QUINTA", "SEXTA", "SÉPTIMA", "OCTAVA", "NOVENA", "DÉCIMA", "UNDÉCIMA", "DUODÉCIMA", "DECIMOTERCERA", "DECIMOCUARTA"][n++] || "NUEVA"}. </span>` : "";
+      return `<div class="b b-${b.type}${b.orig === null ? " nuevo" : ""}" data-k="${k}" contenteditable="true" spellcheck="true">${num}${htmlPartes(b.partes)}</div>`;
+    }).join("");
   };
-  const botonesMas = (i) => `<div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="p" style="min-height:36px;flex:1">+ Párrafo debajo</button>
-      <button type="button" class="btn fantasma" data-mas="${i}" data-tipo="subheading" style="min-height:36px;flex:1">+ Cláusula debajo</button></div>`;
-  pintarEditor();
+
+  pintar(`${cabVolver("Editar modelo", PLANTILLAS[pl], "#/ajustes")}
+    <div class="seccion">
+      <p class="ayuda">Escribe directamente sobre el contrato. Lo que está en gris son datos de cada contrato (nombres, importes, fechas…) y no se puede borrar. Pulsa Intro para añadir un párrafo, o toca un párrafo para ver más opciones.</p>
+      <div class="doc-modelo" id="doc">${pintarDoc()}</div>
+    </div>
+    <div class="acciones">
+      <button class="btn primario ancho" id="guardar">Guardar modelo</button>
+      <div class="dos"><a class="btn secundario" href="#/ajustes">Cancelar</a><button class="btn secundario" id="pdf">Ver en PDF</button></div>
+      <button class="btn fantasma" id="restaurar">Volver al modelo original</button>
+    </div>`, "ajustes");
+
+  const doc = $("#doc");
+  // Leer un bloque del documento: texto fijo y huecos de datos.
+  const leer = (el) => {
+    const partes = [];
+    const push = (t) => { t = t.replace(/ /g, " "); if (!t) return; if (typeof partes[partes.length - 1] === "string") partes[partes.length - 1] += t; else partes.push(t); };
+    const recorrer = (nodo) => nodo.childNodes.forEach(c => {
+      if (c.nodeType === 3) push(c.textContent);
+      else if (c.classList?.contains("num")) { /* ordinal: se pone solo */ }
+      else if (c.classList?.contains("dato")) partes.push({ v: +c.dataset.v, t: c.textContent });
+      else if (c.nodeName === "BR") push(" ");
+      else recorrer(c);
+    });
+    recorrer(el);
+    if (typeof partes[0] === "string") partes[0] = partes[0].replace(/^\s+/, "");
+    const u = partes.length - 1;
+    if (typeof partes[u] === "string") partes[u] = partes[u].replace(/\s+$/, "");
+    return partes.filter(x => x !== "");
+  };
+  const sincronizar = () => $$(".b[data-k]", doc).forEach(el => { bloques[+el.dataset.k].partes = leer(el); });
+  // Ojo: quien llama ya ha sincronizado (los índices del DOM dejan de valer al insertar o quitar).
+  const repintar = (enfocar) => {
+    doc.innerHTML = pintarDoc();
+    activar();
+    if (enfocar != null) { const el = $(`.b[data-k="${enfocar}"]`, doc); if (el) { el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } }
+  };
+  const insertar = (k, type) => {
+    sincronizar();
+    const nuevos = type === "subheading" ? [{ type: "subheading", orig: null, partes: ["Título de la cláusula."] }, { type: "p", orig: null, partes: [""] }] : [{ type: "p", orig: null, partes: [""] }];
+    bloques.splice(k + 1, 0, ...nuevos);
+    repintar(k + 1);
+  };
+  const barra = document.createElement("div");
+  barra.className = "barra-bloque";
+  barra.innerHTML = `<button type="button" data-acc="p">+ Párrafo</button><button type="button" data-acc="subheading">+ Cláusula</button><button type="button" data-acc="quitar" class="peligro">Quitar</button>`;
+  barra.addEventListener("mousedown", (e) => e.preventDefault());
+  barra.addEventListener("click", (e) => {
+    const acc = e.target.closest("[data-acc]")?.dataset.acc;
+    const k = +barra.dataset.k;
+    if (!acc || isNaN(k)) return;
+    if (acc === "quitar") {
+      sincronizar();
+      const b = bloques[k];
+      if (b.partes.some(x => typeof x === "object") && !preguntar("Este párrafo lleva datos del contrato. ¿Quitarlo del modelo?")) return;
+      bloques.splice(k, 1);
+      repintar(Math.max(0, k - 1));
+    } else insertar(k, acc);
+  });
+
+  function activar() {
+    $$(".b[data-k]", doc).forEach(el => {
+      let ultimo = el.innerHTML;
+      const datos0 = el.querySelectorAll(".dato").length;
+      el.addEventListener("focus", () => { barra.dataset.k = el.dataset.k; el.after(barra); });
+      el.addEventListener("input", () => {
+        if (el.querySelectorAll(".dato").length < datos0) {
+          el.innerHTML = ultimo;
+          aviso("Los datos en gris no se pueden borrar", true);
+          const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+          return;
+        }
+        ultimo = el.innerHTML;
+      });
+      el.addEventListener("keydown", (e) => {
+        const k = +el.dataset.k;
+        if (e.key === "Enter") { e.preventDefault(); insertar(k, "p"); }
+        else if (e.key === "Backspace" && !el.textContent.trim() && bloques[k].orig === null) {
+          e.preventDefault(); sincronizar(); bloques.splice(k, 1); repintar(Math.max(0, k - 1));
+        }
+      });
+      el.addEventListener("paste", (e) => {
+        e.preventDefault();
+        document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text/plain").replace(/\s*\n\s*/g, " "));
+      });
+    });
+  }
+  activar();
+
+  // Traducir el documento editado a cambios sobre el modelo original.
+  const cambios = () => {
+    sincronizar();
+    const lista = [];
+    const presentes = new Set(bloques.filter(b => b.orig !== null && !b.fijo).map(b => b.orig));
+    original.forEach(o => { if (!o.fijo && !presentes.has(o.i)) lista.push({ tipo: "quitar", patron: patronDe(o.partes) }); });
+    let ancla = null;
+    for (const b of bloques) {
+      if (b.fijo) continue;
+      const vacio = !textoDe(b.partes).trim();
+      const ord = b.type === "subheading" ? ["NUEVA. "] : [];
+      if (b.orig !== null) {
+        const o = original[b.orig];
+        const antes = patronDe(o.partes), despues = patronDe(b.partes);
+        if (vacio) { lista.push({ tipo: "quitar", patron: antes }); continue; }
+        if (JSON.stringify(antes) !== JSON.stringify(despues) || o.type !== b.type)
+          lista.push({ tipo: "reemplazar", patron: antes, nuevo: [...ord, ...despues], bloque: b.type });
+        ancla = despues;
+      } else if (!vacio && ancla) {
+        const nuevo = patronDe(b.partes);
+        lista.push({ tipo: "añadir", despuesDe: ancla, nuevo: [...ord, ...nuevo], bloque: b.type });
+        ancla = nuevo;
+      }
+    }
+    return lista;
+  };
+
+  $("#pdf").onclick = async () => {
+    const d = await datosEjemploModelo(pl);
+    d.cambiosModelo = cambios();
+    bajar(await construirPdf(generarContrato(d), null), `Modelo_${String(PLANTILLAS[pl]).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
+  };
+  $("#restaurar").onclick = async () => {
+    if (!preguntar("¿Volver al modelo original? Se pierden tus cambios en este modelo.")) return;
+    await setDoc(D("ajustes", "general"), { modelos: { ...(a.modelos || {}), [pl]: [] } }, { merge: true });
+    aviso("Modelo original restaurado");
+    location.hash = "#/ajustes";
+  };
+  $("#guardar").onclick = async () => {
+    const lista = cambios();
+    await setDoc(D("ajustes", "general"), { modelos: { ...(a.modelos || {}), [pl]: lista } }, { merge: true });
+    aviso(lista.length ? `Modelo guardado (${lista.length} cambio${lista.length > 1 ? "s" : ""})` : "Modelo guardado sin cambios");
+    location.hash = "#/ajustes";
+  };
 }
 
 // ============ firma en la app ============
@@ -2072,16 +2239,15 @@ async function vistaAjustes() {
   const yo = String(usuario.email || "").toLowerCase();
   pintar(`${cabVolver("Ajustes")}
     <form class="seccion" id="f">
-      <div class="eti-campo">Propietarios</div>
-      <div class="seccion" style="padding:0" id="props"></div>
+      <details class="plegable"><summary>Propietarios</summary><div class="cuerpo"><div class="seccion" style="padding:0" id="props"></div></div></details>
 
-      <div class="eti-campo">Cobro y notificaciones</div>
+      <details class="plegable"><summary>Cobro y notificaciones</summary><div class="cuerpo">
       ${campo("Domicilio para notificaciones", "domicilio", a.domicilio)}
       ${campo("IBAN para el pago de la renta", "iban", a.iban, 'autocapitalize="characters" placeholder="ES00 0000 0000 0000 0000 0000"')}
       ${campo("Ciudad de firma por defecto", "ciudadFirma", a.ciudadFirma)}
-      ${selectCcaa(k.ccaa || "")}
+      ${selectCcaa(k.ccaa || "")}</div></details>
 
-      <div class="eti-campo">Contratos</div>
+      <details class="plegable"><summary>Condiciones de los contratos</summary><div class="cuerpo">
       <div class="rejilla">
         ${campo("Día límite de pago (1-28)", "diaPago", k.diaPago || 7, 'type="number" min="1" max="28" inputmode="numeric"')}
         <label class="campo">Garantía adicional<select name="garantiaMeses">
@@ -2090,9 +2256,9 @@ async function vistaAjustes() {
       <label class="check"><input type="checkbox" name="clausulaLimpieza" ${k.clausulaLimpieza === false ? "" : "checked"}>
         <span>Incluir la cláusula de limpieza al devolver el piso (contratos de estudiantes)</span></label>
       <label class="campo">Cláusulas adicionales (se añaden a todos tus contratos; separa cada una con una línea en blanco)
-        <textarea name="clausulasExtra" rows="5" placeholder="Por ejemplo: No se permiten mascotas sin autorización escrita del arrendador.">${esc(k.clausulasExtra || "")}</textarea></label>
+        <textarea name="clausulasExtra" rows="5" placeholder="Por ejemplo: No se permiten mascotas sin autorización escrita del arrendador.">${esc(k.clausulasExtra || "")}</textarea></label></div></details>
 
-      <div class="eti-campo">Modelos de contrato</div>
+      <details class="plegable"><summary>Modelos de contrato</summary><div class="cuerpo">
       <p class="ayuda">Edita el texto base de cada tipo de contrato: cambia cláusulas, quita las que no uses o añade las tuyas.</p>
       ${[...MODELOS_EDITABLES, ...Object.keys(a.modelos || {}).filter(pl => !MODELOS_EDITABLES.includes(pl) && a.modelos[pl]?.length)].map(pl => {
         const n = (a.modelos?.[pl] || []).length;
@@ -2102,20 +2268,19 @@ async function vistaAjustes() {
           <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
             ${MODELOS_EDITABLES.includes(pl) ? `<a class="btn secundario" href="#/modelo/${pl}" style="min-height:36px">Editar</a>` : ""}
             ${n ? `<button type="button" class="btn peligro" data-borrar-modelo="${pl}" style="min-height:36px">Restaurar</button>` : ""}</div></div></div>`;
-      }).join("")}
+      }).join("")}</div></details>
 
-      <div class="eti-campo">Google Drive</div>
+      <details class="plegable"><summary>Google Drive</summary><div class="cuerpo">
       ${CONFIG.driveCompleto === false ? '<input type="hidden" name="modoDrive" value="propia">' : segmento("modoDrive", [["propia", "Carpeta propia de la app"], ["completo", "Mis carpetas"]], a.modoDrive || "propia")}
       <div class="tarjeta"><div class="fila"><div><div class="nombre" id="carpeta-nombre">${esc(a.carpetaDriveNombre || "Sin conectar")}</div>
         <div class="meta">Contratos en Renta AAAA / Contratos / Piso y facturas en Renta AAAA / Pisos facturas / Piso</div></div>
         <button type="button" class="btn secundario" id="elegir">${(a.modoDrive || "propia") === "completo" ? "Elegir" : "Conectar"}</button></div></div>
       <input type="hidden" name="carpetaDriveId" value="${esc(a.carpetaDriveId || "")}">
-      <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}">
+      <input type="hidden" name="carpetaDriveNombre" value="${esc(a.carpetaDriveNombre || "")}"></div></details>
     </form>
     <div class="acciones"><button class="btn primario ancho" id="guardar">Guardar</button></div>
 
-    <div class="titulo-seccion"><h2>Equipo</h2></div>
-    <div class="seccion">
+    <div class="seccion"><details class="plegable"><summary>Equipo</summary><div class="cuerpo">
       <p class="ayuda">Las personas de tu equipo ven y gestionan todos los pisos, inquilinos y contratos de esta cuenta. Entran con su cuenta de Google.</p>
       ${(cuenta?.emailsMiembros || []).map(e => {
         const activo = Object.values(cuenta.correos || {}).includes(e);
@@ -2126,18 +2291,17 @@ async function vistaAjustes() {
       <div class="rejilla" style="grid-template-columns:1fr auto">
         ${campo("Email de Google de la otra persona", "nuevoMiembro", "", 'type="email" id="nuevo-miembro" placeholder="nombre@gmail.com"')}
         <button class="btn secundario" id="invitar" style="align-self:end">Añadir</button>
-      </div>
+      </div></div></details>
     </div>
 
-    <div class="titulo-seccion"><h2>Privacidad y datos</h2></div>
-    <div class="seccion">
+    <div class="seccion"><details class="plegable"><summary>Privacidad y datos</summary><div class="cuerpo">
       <div class="tarjeta" style="gap:6px">
         ${Object.entries(LEGALES).map(([k2, t]) => `<a href="#/legal/${k2}" style="font-size:14px">${t}</a>`).join("")}
       </div>
       ${DEMO ? "" : '<button class="btn secundario" id="exportar">Descargar una copia de mis datos</button>'}
       ${esTitular
         ? `<button class="btn peligro" id="borrar-cuenta">Borrar mi cuenta y todos sus datos</button><div id="confirmar-borrado"></div>`
-        : `<button class="btn peligro" id="salir-equipo">Salir de este equipo</button>`}
+        : `<button class="btn peligro" id="salir-equipo">Salir de este equipo</button>`}</div></details>
     </div>
 
     ${(await esAdmin()) ? '<div class="seccion"><a class="btn salvia" href="#/admin">Panel de administración (beta)</a></div>' : ""}
