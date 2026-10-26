@@ -37,7 +37,7 @@ export const CONFIG = {
   versionTextos: "1",
 
   // Dirección pública de la app (para el enlace a la demo).
-  urlApp: "https://blancamc1995.github.io/generador-contratos/",
+  urlApp: "https://blancamc1995.github.io/gestion-alquileres/",
 
   // Pago de la beta. Si rellenas precio y bizum, la pantalla de espera
   // muestra cómo pagar; después activas la cuenta en Ajustes → Administración.
