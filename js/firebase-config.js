@@ -35,4 +35,11 @@ export const CONFIG = {
     fechaTextos: "octubre de 2026",
   },
   versionTextos: "1",
+
+  // Dirección pública de la app (para el enlace a la demo).
+  urlApp: "https://blancamc1995.github.io/generador-contratos/",
+
+  // Pago de la beta. Si rellenas precio y bizum, la pantalla de espera
+  // muestra cómo pagar; después activas la cuenta en Ajustes → Administración.
+  pago: { precio: "", bizum: "", duracion: "un año" },
 };

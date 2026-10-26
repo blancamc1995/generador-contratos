@@ -5,7 +5,7 @@ import { DEMO, auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
 import { generarContrato, firmantesDe, fechaLarga, euros, MESES, renumerar } from "./contratos.js";
 import { construirPdf, descargar } from "./pdf.js";
 import * as drive from "./drive.js";
-import { D, C, CID, fijarCuenta, resolverCuenta, leerCuenta, invitarMiembro, quitarMiembro, cuentaDeEnlace } from "./cuenta.js";
+import { D, C, CID, fijarCuenta, resolverCuenta, leerCuenta, invitarMiembro, quitarMiembro, cuentaDeEnlace, esAdmin, cuentaActiva, solicitarAcceso, listarCuentas, activarCuenta, desactivarCuenta } from "./cuenta.js";
 import { paginaLegal, TEXTO_CONSENTIMIENTO, LEGALES } from "./legal.js";
 
 const app = document.getElementById("app");
@@ -128,7 +128,7 @@ const ICO = {
 
 function barra(activa) {
   const item = (href, k, txt) => `<a href="${href}" class="${activa === k ? "on" : ""}">${ICO[k]}${txt}</a>`;
-  return `<div class="barra"><nav>${item("#/", "inicio", "Inicio")}${item("#/pisos", "pisos", "Pisos")}${item("#/contratos", "contratos", "Contratos")}${item("#/facturas", "facturas", "Facturas")}${item("#/ajustes", "ajustes", "Ajustes")}</nav></div>`;
+  return `<div class="barra"><div class="marca-lateral">${esc(CONFIG.nombreApp || "Contratos")}</div><nav>${item("#/", "inicio", "Inicio")}${item("#/pisos", "pisos", "Pisos")}${item("#/contratos", "contratos", "Contratos")}${item("#/facturas", "facturas", "Facturas")}${item("#/ajustes", "ajustes", "Ajustes")}</nav></div>`;
 }
 
 function cabVolver(titulo, sub = "", href = "#/") {
@@ -137,7 +137,7 @@ function cabVolver(titulo, sub = "", href = "#/") {
 }
 
 function pintar(html, activa) {
-  const banda = DEMO ? `<div style="background:#EADFD1;color:#5A4A42;font-size:12px;text-align:center;padding:8px 12px">Modo demostración · los datos se guardan solo en este navegador · <a href="#/">panel</a> · <a href="#" id="reiniciar-demo">reiniciar</a></div>` : "";
+  const banda = DEMO ? `<div style="background:#EADFD1;color:#5A4A42;font-size:12px;text-align:center;padding:8px 12px">Demo con datos inventados · <a href="#/">panel</a> · <a href="#" id="reiniciar-demo">reiniciar</a> · <a href="${esc(CONFIG.urlApp || location.pathname)}">salir de la demo</a></div>` : "";
   app.innerHTML = banda + html + (activa !== undefined ? barra(activa) : "");
   if (DEMO) $("#reiniciar-demo").onclick = (e) => { e.preventDefault(); if (preguntar("¿Borrar los datos de la demo y empezar de nuevo?")) signOut(auth); };
   window.scrollTo(0, 0);
@@ -1543,6 +1543,8 @@ async function vistaLogin() {
       <div class="tarjeta"><div class="nombre">Todo en tu Google Drive</div><div class="meta">Contratos y facturas ordenados por año de la renta y por piso.</div></div>
     </div>
     <button class="btn primario" id="entrar" style="min-width:260px">Entrar con Google</button>
+    <a class="btn secundario" href="${esc((CONFIG.urlApp || location.pathname) + "?demo#/")}" style="min-width:260px">Probar la demo sin registrarte</a>
+    <p class="ayuda" style="font-size:13px;max-width:36ch">Estamos en <b>beta privada</b>: entra con Google y solicita acceso. La demo usa datos inventados y no guarda nada.</p>
     <p class="ayuda" style="font-size:12px;max-width:36ch">Al entrar aceptas las <a href="#/legal/terminos">condiciones de uso</a> y la <a href="#/legal/privacidad">política de privacidad</a>.</p>
     ${usuario ? '<button class="btn peligro" id="salir">Usar otra cuenta</button>' : ""}
     ${enlacesLegales()}
@@ -1753,6 +1755,7 @@ async function vistaAjustes() {
         : `<button class="btn peligro" id="salir-equipo">Salir de este equipo</button>`}
     </div>
 
+    ${(await esAdmin()) ? '<div class="seccion"><a class="btn salvia" href="#/admin">Panel de administración (beta)</a></div>' : ""}
     <div class="acciones">
       <p class="ayuda" style="text-align:center">Sesión: ${esc(usuario.email)}</p>
       <button class="btn secundario" id="salir">Cerrar sesión</button>
@@ -1887,6 +1890,64 @@ async function borrarCuenta() {
   cuentaLista = { uid: null, ok: false };
 }
 
+
+// ============ beta: espera de activación y panel de administración ============
+
+async function vistaEspera(cuenta) {
+  const pago = CONFIG.pago || {};
+  const enviada = cuenta?.solicitud;
+  pintar(`<div class="hero"><div class="eti">Beta privada</div><h1>Tu cuenta está casi lista</h1>
+      <p>Estamos dando acceso poco a poco. En cuanto se active, entrarás directamente al asistente de configuración.</p></div>
+    <div class="seccion">
+      ${pago.precio && pago.bizum ? `<div class="tarjeta"><div class="nombre">Activa tu cuenta</div>
+          <div class="meta" style="font-size:14px;line-height:1.5">Haz un Bizum de <b>${esc(pago.precio)} €</b> al <b>${esc(pago.bizum)}</b> con el concepto <b>${esc(usuario.email)}</b>. La activamos en menos de 24 horas${pago.duracion ? ` y tendrás acceso durante ${esc(pago.duracion)}` : ""}.</div></div>` : ""}
+      ${enviada
+        ? `<div class="tarjeta" style="background:var(--salvia-claro)"><div class="nombre" style="color:#3F4D37">Solicitud enviada</div>
+            <div class="meta" style="color:#3F4D37">El ${fechaCorta(enviada)}. Te avisaremos en ${esc(usuario.email)}.</div></div>`
+        : `<label class="campo">Cuéntanos cuántos pisos alquilas y cómo (opcional)<textarea id="mensaje" rows="3" placeholder="Por ejemplo: 3 pisos de estudiantes en Córdoba"></textarea></label>
+           <button class="btn primario" id="solicitar">Solicitar acceso</button>`}
+      <a class="btn secundario" href="${esc((CONFIG.urlApp || location.pathname) + "?demo#/")}">Mientras tanto, ver la demo</a>
+    </div>
+    <div class="acciones"><p class="ayuda" style="text-align:center">Sesión: ${esc(usuario.email)}</p>
+      <button class="btn peligro" id="salir">Cerrar sesión</button>${enlacesLegales()}</div>`);
+  if ($("#solicitar")) $("#solicitar").onclick = async (e) => {
+    e.target.disabled = true;
+    try { await solicitarAcceso($("#mensaje").value); aviso("Solicitud enviada"); enrutar(); }
+    catch (err) { aviso("No se pudo enviar: " + err.message, true); e.target.disabled = false; }
+  };
+  $("#salir").onclick = () => signOut(auth);
+}
+
+async function vistaAdmin() {
+  const cuentas = (await listarCuentas()).sort((a, b) => {
+    const t = (x) => x.solicitud?.toDate ? x.solicitud.toDate().getTime() : x.creada?.toDate ? x.creada.toDate().getTime() : 0;
+    return t(b) - t(a);
+  });
+  const estado = (c) => cuentaActiva(c)
+    ? `<span class="chip ok">Activa${c.activoHasta ? " hasta " + fechaCorta(c.activoHasta) + " " + (c.activoHasta.toDate ? c.activoHasta.toDate() : new Date(c.activoHasta)).getFullYear() : ""}</span>`
+    : c.solicitud ? '<span class="chip espera">Solicita acceso</span>' : '<span class="chip gris">Pendiente</span>';
+  pintar(`${cabVolver("Administración", `${cuentas.length} cuentas`, "#/ajustes")}
+    <div class="seccion">
+      ${cuentas.map(c => `<div class="tarjeta">
+          <div class="fila"><div><div class="nombre">${esc(c.nombre || "")}</div>
+            <div class="meta">${esc((c.emailsMiembros || []).join(", "))}</div></div>${estado(c)}</div>
+          ${c.mensajeSolicitud ? `<div class="meta" style="font-style:italic">«${esc(c.mensajeSolicitud)}»</div>` : ""}
+          <div class="meta">Creada el ${fechaCorta(c.creada)}${c.solicitud ? " · solicitud el " + fechaCorta(c.solicitud) : ""}</div>
+          ${c.id === CID ? "" : `<div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn secundario" data-activar="${c.id}" data-meses="12" style="min-height:40px">Activar 1 año</button>
+            <button class="btn secundario" data-activar="${c.id}" data-meses="1" style="min-height:40px">Prueba 1 mes</button>
+            ${cuentaActiva(c) ? `<button class="btn peligro" data-desactivar="${c.id}" style="min-height:40px">Desactivar</button>` : ""}</div>`}
+        </div>`).join("") || '<div class="vacio">Todavía no hay cuentas.</div>'}
+    </div>`, "ajustes");
+  $$("[data-activar]").forEach(b => (b.onclick = async () => {
+    await activarCuenta(b.dataset.activar, +b.dataset.meses); aviso("Cuenta activada"); vistaAdmin();
+  }));
+  $$("[data-desactivar]").forEach(b => (b.onclick = async () => {
+    if (!preguntar("¿Desactivar esta cuenta? Dejará de poder crear o editar nada.")) return;
+    await desactivarCuenta(b.dataset.desactivar); aviso("Cuenta desactivada"); vistaAdmin();
+  }));
+}
+
 // ============ router ============
 
 async function enrutar() {
@@ -1903,6 +1964,11 @@ async function enrutar() {
       $("#reintentar").onclick = () => { cuentaLista = { uid: null }; enrutar(); };
       return;
     }
+    const cuentaActual = await leerCuenta();
+    const admin = await esAdmin();
+    if (admin && !cuentaActiva(cuentaActual)) await activarCuenta(CID, 1200);
+    if (ruta === "admin" && admin) return await vistaAdmin();
+    if (!admin && !cuentaActiva(cuentaActual)) return await vistaEspera(cuentaActual);
     switch (ruta) {
       case "bienvenida": return await vistaBienvenida();
       case "": return await vistaPanel();

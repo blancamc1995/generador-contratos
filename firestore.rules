@@ -18,6 +18,13 @@ service cloud.firestore {
       return autenticado() && exists(/databases/$(database)/documents/cuentas/$(cid))
         && request.auth.uid in cuenta(cid).miembros;
     }
+    // Administradora del servicio (activa cuentas de la beta). Cambia el email.
+    function esAdmin() { return emailVerificado() && miEmail() == 'EMAIL_ADMIN@gmail.com'; }
+    // La cuenta tiene acceso (beta aprobada o pase vigente).
+    function activa(cid) {
+      return cuenta(cid).plan == 'activo'
+        && (cuenta(cid).get('activoHasta', null) == null || cuenta(cid).activoHasta > request.time);
+    }
     function texto(v, max) { return v is string && v.size() <= max; }
     function persona(p) {
       return p is map
@@ -39,17 +46,20 @@ service cloud.firestore {
 
     // ---------- cuentas ----------
     match /cuentas/{cid} {
-      allow read: if miembro(cid)
+      allow read: if miembro(cid) || esAdmin()
         || (emailVerificado() && miEmail() in resource.data.emailsMiembros);
       // Crear la propia cuenta (su id es el uid del creador).
       allow create: if autenticado() && cid == request.auth.uid
         && request.resource.data.propietario == request.auth.uid
-        && request.resource.data.miembros == [request.auth.uid];
+        && request.resource.data.miembros == [request.auth.uid]
+        && (request.resource.data.plan == 'pendiente' || esAdmin());
       // Los miembros gestionan el equipo; el titular no se puede quitar.
       allow update: if miembro(cid)
         && request.resource.data.propietario == resource.data.propietario
         && resource.data.propietario in request.resource.data.miembros
-        && soloCambia(['nombre', 'miembros', 'emailsMiembros', 'correos', 'plan']);
+        && soloCambia(['nombre', 'miembros', 'emailsMiembros', 'correos', 'solicitud', 'mensajeSolicitud']);
+      // La administradora activa o desactiva cuentas.
+      allow update: if esAdmin() && soloCambia(['plan', 'activoHasta', 'activadaEl']);
       // Unirse a un equipo al que te han invitado: solo añadirte a ti.
       allow update: if emailVerificado() && miEmail() in resource.data.emailsMiembros
         && soloCambia(['miembros', 'correos'])
@@ -63,8 +73,10 @@ service cloud.firestore {
       allow delete: if autenticado() && resource.data.propietario == request.auth.uid;
 
       // Todo lo de dentro: solo los miembros.
+      // Todo lo de dentro: los miembros leen siempre; escriben si la cuenta está activa.
       match /{document=**} {
-        allow read, write: if miembro(cid);
+        allow read, delete: if miembro(cid);
+        allow create, update: if miembro(cid) && activa(cid);
       }
 
       // --- lo que puede hacer un inquilino con su enlace ---
@@ -115,6 +127,8 @@ service cloud.firestore {
         }
       }
     }
+
+    match /admin/{d} { allow read, write: if esAdmin(); }
 
     // ---------- invitaciones a un equipo ----------
     match /accesos/{email} {

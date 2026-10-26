@@ -9,6 +9,23 @@
 import { db, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, serverTimestamp, arrayUnion, DEMO } from "./datos.js";
 
 export let CID = null;
+let ADMIN = null;
+
+/** ¿Es la administradora del servicio? Lo deciden las reglas: solo ella puede leer admin/config. */
+export async function esAdmin() {
+  if (DEMO) return false;
+  if (ADMIN !== null) return ADMIN;
+  try { await getDoc(doc(db, "admin", "config")); ADMIN = true; } catch { ADMIN = false; }
+  return ADMIN;
+}
+
+/** ¿La cuenta tiene acceso? (beta aprobada o pase vigente) */
+export function cuentaActiva(c) {
+  if (DEMO) return true;
+  if (!c || c.plan !== "activo") return false;
+  const hasta = c.activoHasta?.toDate ? c.activoHasta.toDate() : c.activoHasta ? new Date(c.activoHasta) : null;
+  return !hasta || hasta > new Date();
+}
 export function fijarCuenta(id) { CID = id; }
 
 /** Referencias dentro de la cuenta activa. */
@@ -56,7 +73,7 @@ export async function resolverCuenta(u) {
   await setDoc(doc(db, "cuentas", cid), {
     nombre: u.displayName || email, propietario: u.uid, miembros: [u.uid], emailsMiembros: [email],
     correos: { [u.uid]: email },
-    creada: serverTimestamp(), plan: "prueba",
+    creada: serverTimestamp(), plan: (await esAdmin()) ? "activo" : "pendiente",
   });
   await setDoc(ref, { cuentaId: cid, email, desde: serverTimestamp() });
   fijarCuenta(cid);
@@ -119,4 +136,25 @@ export async function quitarMiembro(email, cuenta) {
 export async function cuentaDeEnlace(token) {
   const s = await getDoc(doc(db, "enlaces", token)).catch(() => null);
   return s?.exists() ? s.data().cuentaId : null;
+}
+
+/** Pedir acceso a la beta (lo ve la administradora en su panel). */
+export async function solicitarAcceso(mensaje) {
+  await updateDoc(doc(db, "cuentas", CID), { solicitud: serverTimestamp(), mensajeSolicitud: String(mensaje || "").slice(0, 500) });
+}
+
+// ---------- panel de administración ----------
+
+export async function listarCuentas() {
+  const s = await getDocs(collection(db, "cuentas"));
+  return s.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function activarCuenta(id, meses) {
+  const hasta = new Date(); hasta.setMonth(hasta.getMonth() + meses);
+  await updateDoc(doc(db, "cuentas", id), { plan: "activo", activoHasta: hasta, activadaEl: serverTimestamp() });
+}
+
+export async function desactivarCuenta(id) {
+  await updateDoc(doc(db, "cuentas", id), { plan: "pendiente" });
 }
