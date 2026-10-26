@@ -1449,6 +1449,7 @@ function cabVolver(titulo, sub = "", href = "#/") {
 }
 function pintar(html, activa) {
   const banda = DEMO ? `<div style="background:#EADFD1;color:#5A4A42;font-size:12px;text-align:center;padding:8px 12px">Demo con datos inventados \xB7 <a href="#/">panel</a> \xB7 <a href="#" id="reiniciar-demo">reiniciar</a> \xB7 <a href="${esc(CONFIG.urlApp || location.pathname)}">salir de la demo</a></div>` : "";
+  app.classList.remove("ancho");
   app.innerHTML = banda + html + (activa !== void 0 ? barra(activa) : "");
   if (DEMO) $("#reiniciar-demo").onclick = (e) => {
     e.preventDefault();
@@ -2940,29 +2941,124 @@ function enlacesLegales() {
     <a href="#/legal/privacidad">Privacidad</a> \xB7 <a href="#/legal/terminos">Condiciones</a> \xB7 <a href="#/legal/aviso">Aviso legal</a></p>`;
 }
 async function vistaLogin() {
-  pintar(`<div class="login" style="padding-top:56px">
-    <h1>${esc(CONFIG.nombreApp || "Contratos de alquiler")}</h1>
-    <p class="ayuda" style="font-size:15px;max-width:34ch">Tus inquilinos rellenan sus datos desde el m\xF3vil, el contrato se genera solo y lo firma cada parte desde su tel\xE9fono.</p>
-    <div class="seccion" style="padding:0;text-align:left;width:100%;max-width:420px">
-      <div class="tarjeta"><div class="nombre">Sin papeleo</div><div class="meta">Un enlace por inquilino: datos, avalistas y DNI validados.</div></div>
-      <div class="tarjeta"><div class="nombre">Firma en el m\xF3vil</div><div class="meta">Inquilino, avalistas y propietarios firman con el dedo. Queda registro de cada firma.</div></div>
-      <div class="tarjeta"><div class="nombre">Todo en tu Google Drive</div><div class="meta">Contratos y facturas ordenados por a\xF1o de la renta y por piso.</div></div>
-    </div>
-    <button class="btn primario" id="entrar" style="min-width:260px">Entrar con Google</button>
-    <a class="btn secundario" href="${esc((CONFIG.urlApp || location.pathname) + "?demo#/")}" style="min-width:260px">Probar la demo sin registrarte</a>
-    <p class="ayuda" style="font-size:13px;max-width:36ch">Estamos en <b>beta privada</b>: entra con Google y solicita acceso. La demo usa datos inventados y no guarda nada.</p>
-    <p class="ayuda" style="font-size:12px;max-width:36ch">Al entrar aceptas las <a href="#/legal/terminos">condiciones de uso</a> y la <a href="#/legal/privacidad">pol\xEDtica de privacidad</a>.</p>
-    ${usuario ? '<button class="btn peligro" id="salir">Usar otra cuenta</button>' : ""}
-    ${enlacesLegales()}
+  const demo = esc((CONFIG.urlApp || location.pathname) + "?demo#/");
+  const nombre = esc(CONFIG.nombreApp || "Contratos de alquiler");
+  const precio = CONFIG.pago?.precio;
+  const IC_C = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>`, IC_D = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/></svg>`;
+  const firma = `<svg viewBox="0 0 160 44" width="120" height="33" aria-hidden="true"><path d="M6 32c10-18 18-22 22-14s-6 18 2 16 12-22 20-20-4 20 6 18 14-16 22-14 2 12 10 12 18-10 28-12 16 4 30 2" fill="none" stroke="#2B2350" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+  pintar(`<div class="portada">
+    <header class="p-top">
+      <div class="p-marca">${nombre}</div>
+      <button class="btn secundario p-entrar" data-entrar>Entrar</button>
+    </header>
+
+    <section class="p-hero">
+      <div class="p-hero-texto">
+        <div class="p-eti">Para propietarios que alquilan pisos y habitaciones</div>
+        <h1>Del primer mensaje al contrato firmado, sin papeles.</h1>
+        <p class="p-sub">Mandas un enlace a tu inquilino. \xC9l rellena sus datos y los de sus avalistas desde el m\xF3vil, el contrato se genera solo y lo firma cada uno con el dedo. El PDF firmado acaba ordenado en tu Google Drive.</p>
+        <div class="p-ctas">
+          <button class="btn primario" data-entrar>Solicitar acceso</button>
+          <a class="btn secundario" href="${demo}">Ver la demo</a>
+        </div>
+        <p class="p-nota">Beta privada \xB7 gratis durante la beta \xB7 la demo no necesita registro</p>
+      </div>
+      <div class="p-movil" aria-hidden="true">
+        <div class="p-pantalla">
+          <div class="p-m-cab"><small>MARTES, 3 DE SEPTIEMBRE</small><b>Hola, Carmen</b></div>
+          <div class="p-m-stats"><span><b>3</b>Pisos</span><span><b>1</b>Pendiente</span><span><b>5</b>Firmados</span></div>
+          <div class="p-m-card"><div><b>Piso Centro \xB7 Hab. 2</b><small>Habitaci\xF3n \xB7 Valencia</small></div><i class="chip ok">Datos recibidos</i></div>
+          <div class="p-m-card"><div><b>\xC1tico Jardines</b><small>Piso entero \xB7 3 inquilinos</small></div><i class="chip espera">2/5 firmas</i></div>
+          <div class="p-m-card"><div><b>Casa del R\xEDo</b><small>Larga duraci\xF3n</small></div><i class="chip ok">Firmado</i></div>
+          <div class="p-m-btn">+ Nuevo inquilino</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="p-bloque">
+      <h2>C\xF3mo funciona</h2>
+      <ol class="p-pasos">
+        <li><b>Creas un enlace</b><span>Eliges el piso, la habitaci\xF3n, la renta y c\xF3mo se paga la luz. Lo mandas por WhatsApp.</span></li>
+        <li><b>El inquilino rellena sus datos</b><span>Nombre, DNI (se comprueba la letra), domicilio y sus avalistas. Sin instalar nada.</span></li>
+        <li><b>Se genera el contrato</b><span>A partir de modelos basados en la Ley de Arrendamientos Urbanos. Puedes cambiar cualquier p\xE1rrafo antes de enviarlo.</span></li>
+        <li><b>Firman todos desde el m\xF3vil</b><span>Inquilino, avalistas y propietarios, cada uno su parte. El PDF firmado se guarda en tu Drive.</span></li>
+      </ol>
+    </section>
+
+    <section class="p-bloque p-dos">
+      <div class="p-muestra">
+        <div class="p-eti">As\xED firma tu inquilino</div>
+        <div class="p-tarjeta">
+          <div class="fila"><div><b>Luc\xEDa Mart\xEDn</b><small>Arrendataria</small></div><i class="chip ok">Firmado</i></div>
+          <div class="p-firma">${firma}</div>
+          <small>3 de septiembre de 2026, 18:42 \xB7 huella del documento registrada</small>
+        </div>
+        <div class="p-tarjeta"><div class="fila"><div><b>Ana Mart\xEDn</b><small>Fiadora de Luc\xEDa Mart\xEDn</small></div><i class="chip gris">Pendiente</i></div></div>
+      </div>
+      <div class="p-muestra">
+        <div class="p-eti">Y as\xED queda en tu Drive</div>
+        <div class="p-tarjeta p-arbol">
+          <div>${IC_C}Alquileres</div>
+          <div class="n1">${IC_C}Renta 2026</div>
+          <div class="n2">${IC_C}Contratos</div>
+          <div class="n3">${IC_C}Piso Centro</div>
+          <div class="n4">${IC_D}Contrato_PisoCentro_Hab2_LuciaMartin_firmado.pdf</div>
+          <div class="n2">${IC_C}Pisos facturas</div>
+          <div class="n3">${IC_C}Piso Centro</div>
+          <div class="n4">${IC_D}Ikea_Escritorio_2026-08-20.jpg</div>
+        </div>
+        <small class="p-pie">Los contratos de curso (septiembre a julio) se guardan en los dos a\xF1os de la renta.</small>
+      </div>
+    </section>
+
+    <section class="p-bloque">
+      <h2>Todo lo que necesitas para alquilar</h2>
+      <div class="p-rejilla">
+        <div><b>Habitaciones, piso entero o larga duraci\xF3n</b><span>Un modelo para cada caso, con fianza, avalistas y pr\xF3rrogas seg\xFAn la ley.</span></div>
+        <div><b>Luz y agua a tu manera</b><span>Incluidas, cuota fija, cuota con regularizaci\xF3n o cambio de titularidad.</span></div>
+        <div><b>Contratos editables</b><span>Cambia, quita o a\xF1ade cl\xE1usulas. Gu\xE1rdalas en tu modelo para los siguientes.</span></div>
+        <div><b>Facturas para la renta</b><span>Haz una foto al ticket y se guarda en la carpeta del piso y del a\xF1o.</span></div>
+        <div><b>Para copropietarios</b><span>Invita a tu pareja o socio: los dos veis y firm\xE1is lo mismo.</span></div>
+        <div><b>Tus datos, en tu Drive</b><span>Los documentos son tuyos. Puedes descargar o borrar tu cuenta cuando quieras.</span></div>
+      </div>
+    </section>
+
+    <section class="p-bloque p-precio">
+      <div class="p-tarjeta p-plan">
+        <div class="p-eti">Beta privada</div>
+        <div class="p-cifra">Gratis</div>
+        <p>Mientras dure la beta. ${precio ? `Despu\xE9s, ${esc(precio)} \u20AC al a\xF1o, sin renovaci\xF3n autom\xE1tica.` : "Te avisaremos antes de que termine, sin compromiso."}</p>
+        <button class="btn primario" data-entrar>Solicitar acceso</button>
+        <a class="btn secundario" href="${demo}">Ver la demo</a>
+      </div>
+    </section>
+
+    <section class="p-bloque">
+      <h2>Preguntas frecuentes</h2>
+      <details class="p-faq"><summary>\xBFTiene validez la firma desde el m\xF3vil?</summary><p>Es una firma electr\xF3nica simple seg\xFAn el reglamento europeo eIDAS, v\xE1lida para contratos de alquiler. Se registran la firma, la aceptaci\xF3n expresa, la fecha y hora y una huella del texto firmado.</p></details>
+      <details class="p-faq"><summary>\xBFEl inquilino tiene que instalar algo o registrarse?</summary><p>No. Abre el enlace que le mandas, rellena sus datos y firma. Nada m\xE1s.</p></details>
+      <details class="p-faq"><summary>\xBFD\xF3nde se guardan los datos?</summary><p>Los datos de los contratos, en servidores de Google en la Uni\xF3n Europea (Madrid). Los PDF y las facturas, en tu propio Google Drive.</p></details>
+      <details class="p-faq"><summary>\xBFLos modelos sustituyen a un abogado?</summary><p>No. Son modelos orientativos basados en la normativa vigente. Revisa cada contrato y ad\xE1ptalo a tu caso antes de enviarlo.</p></details>
+    </section>
+
+    <footer class="p-pie-final">
+      ${usuario ? `<p class="ayuda">Has entrado como ${esc(usuario.email)} \xB7 <a href="#" id="salir">usar otra cuenta</a></p>` : ""}
+      <p class="ayuda">Al entrar aceptas las <a href="#/legal/terminos">condiciones de uso</a> y la <a href="#/legal/privacidad">pol\xEDtica de privacidad</a>.</p>
+      ${enlacesLegales()}
+    </footer>
   </div>`);
-  $("#entrar").onclick = async () => {
+  app.classList.add("ancho");
+  $$("[data-entrar]").forEach((b) => b.onclick = async () => {
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
     } catch (e) {
       aviso("No se pudo iniciar sesi\xF3n: " + e.message, true);
     }
+  });
+  if ($("#salir")) $("#salir").onclick = (e) => {
+    e.preventDefault();
+    signOut(auth);
   };
-  if ($("#salir")) $("#salir").onclick = () => signOut(auth);
 }
 function vistaLegal(slug2) {
   const titulo = LEGALES[slug2] || "Informaci\xF3n legal";
@@ -3427,6 +3523,7 @@ async function enrutar() {
   try {
     if (ruta === "i") return await vistaInquilino(arg);
     if (ruta === "legal") return vistaLegal(arg);
+    if (ruta === "portada") return await vistaLogin();
     if (!authListo) return;
     if (!usuario) return await vistaLogin();
     if (!await prepararCuenta()) {
