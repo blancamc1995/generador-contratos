@@ -35,7 +35,7 @@ export const { auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged
 // ================= modo demostración =================
 
 function crearDemo() {
-  const CLAVE = "contratos-demo-v9";
+  const CLAVE = "contratos-demo-v10";
   let memoria = null;
   const cargar = () => {
     if (memoria) return memoria;
@@ -202,7 +202,7 @@ function semilla() {
   const f2 = firmantes(d2);
   m["contratos/demoContrato2"] = { pisoId: "rio", pisoNombre: "Casa del Río", plantilla: d2.plantilla, curso: "2026", años: [2026],
     inquilinos: ["Marta Ejemplo Prueba"], nombreArchivo: "Contrato_CasadelRio_MartaEjemploPrueba_2026.pdf", datos: d2,
-    enDrive: enDrive([2026], "rio", "c2"), estado: "firmando", firmantes: f2, firmantesIds: f2.map(f => f.fid), huella: "demo",
+    enDrive: enDrive([2026, 2027], "rio", "c2"), estado: "firmando", firmantes: f2, firmantesIds: f2.map(f => f.fid), huella: "demo",
     creada: ts(6), creadaPor: "demo", enviadoAFirmar: ts(5) };
   f2.filter(f => f.rol !== "arrendador").forEach(f => firmar("demoContrato2", f, 4));
 

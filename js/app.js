@@ -357,34 +357,80 @@ async function vistaPanel() {
     return `<span class="chip ok">Al día</span>`;
   };
 
+  // Números de la cartera y avisos.
+  const facturasPanel = await listar("facturas");
+  const hoyI = hoyISO();
+  const en60 = new Date(Date.now() + 60 * 864e5).toLocaleDateString("sv-SE");
+  let ingresosMes = 0, flujoMes = 0, invertido = 0, gastosAño = 0, plazas = 0, ocupadas = 0;
+  const porPiso = {};
+  for (const p of pisos) {
+    const cs = contratos.filter(c => c.pisoId === p.id);
+    const r = rentaActual(p, cs);
+    const x = rentabilidad(p, r.estimada ? 0 : r.importe, facturasPanel.filter(f => f.pisoId === p.id));
+    const vig = contratosVigentes(cs).filter(c => (c.datos?.fechaInicio || "") <= hoyI && (!(c.finalizado || c.datos?.fechaFin) || (c.finalizado || c.datos.fechaFin) >= hoyI));
+    const total = porHabitacion(p.plantilla) ? Math.max(1, num(p.numHabitaciones)) : 1;
+    const llenas = Math.min(total, porHabitacion(p.plantilla) ? vig.length : (vig.length ? 1 : 0));
+    plazas += total; ocupadas += llenas;
+    ingresosMes += r.estimada ? 0 : r.importe; flujoMes += x.flujoMes; invertido += x.inversion; gastosAño += x.gastosAño;
+    porPiso[p.id] = { x, total, llenas, r };
+  }
+  const terminan = contratosVigentes(contratos).filter(c => {
+    const fin = c.finalizado || c.datos?.fechaFin;
+    return fin && fin >= hoyI && fin <= en60;
+  });
+  const porEnviar = contratos.filter(c => c.estado === "generado");
+  const sinNumeros = pisos.filter(p => !num(p.economia?.precioCompra));
+  const netaCartera = invertido > 0 ? (ingresosMes * 12 - gastosAño) / invertido : null;
+  const fmt = (x) => Math.round(x).toLocaleString("es-ES") + " €";
+
+  const avisos = [
+    ...porEnviar.map(c => `<a class="tarjeta" href="#/contrato/${c.id}"><div class="fila"><div><div class="nombre">${esc(c.inquilinos.join(", "))}</div>
+      <div class="meta">${esc(c.pisoNombre)} · contrato listo para revisar y enviar</div></div><span class="chip firma">Por enviar</span></div></a>`),
+    ...terminan.map(c => `<a class="tarjeta" href="#/contrato/${c.id}"><div class="fila"><div><div class="nombre">${esc(c.inquilinos.join(", "))}</div>
+      <div class="meta">${esc(c.pisoNombre)} · termina el ${fechaLarga(c.finalizado || c.datos.fechaFin)}</div></div><span class="chip espera">Termina pronto</span></div></a>`),
+    ...(sinNumeros.length ? [`<a class="tarjeta" href="#/piso/${sinNumeros[0].id}"><div class="fila"><div><div class="nombre">Completa los datos económicos</div>
+      <div class="meta">${sinNumeros.map(p => esc(p.nombre)).join(", ")}: sin precio de compra, no se puede calcular la rentabilidad</div></div><span class="chip gris">Datos</span></div></a>`] : []),
+  ];
+
   pintar(`
     <div class="cab"><div class="fecha">${fecha}</div><h1>Hola${saludoDe(ajustesPanel) ? ", " + esc(saludoDe(ajustesPanel)) : ""}</h1></div>
-    <div class="stats">
-      <div class="stat"><b>${pisos.length}</b><span>Pisos</span></div>
-      <div class="stat"><b>${abiertas.length}</b><span>Pendientes</span></div>
-      <div class="stat"><b>${firmados.length}</b><span>Firmados</span></div>
+    <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <div class="stat"><b style="font-size:22px">${fmt(ingresosMes)}</b><span>Cobras al mes</span></div>
+      <div class="stat"><b style="font-size:22px;${flujoMes < 0 ? "color:#A2321F" : ""}">${fmt(flujoMes)}</b><span>Flujo de caja al mes</span></div>
+      <div class="stat"><b style="font-size:22px">${plazas ? `${ocupadas}/${plazas}` : "—"}</b><span>Ocupación (pisos y habitaciones)</span></div>
+      <div class="stat"><b style="font-size:22px">${netaCartera === null ? "—" : (netaCartera * 100).toLocaleString("es-ES", { maximumFractionDigits: 1 }) + " %"}</b><span>Rentabilidad neta</span></div>
     </div>
+    <div class="seccion" style="padding-top:0"><div class="pildoras">
+      <a class="btn secundario" href="#/finanzas" style="min-height:40px">Rentabilidad</a>
+      <a class="btn secundario" href="#/finanzas/renta" style="min-height:40px">Resumen Renta</a>
+      <a class="btn secundario" href="#/finanzas/simulador" style="min-height:40px">Simulador</a>
+      <a class="btn secundario" href="#/facturas" style="min-height:40px">Subir factura</a>
+    </div></div>
     ${abiertas.length ? `<div class="titulo-seccion"><h2>Esperando datos</h2></div>
       <div class="seccion">${abiertas.map(i => `
         <a class="tarjeta" href="#/inv/${i.id}"><div class="fila"><div>
           <div class="nombre">${esc(i.pisoNombre)}${i.habitacion ? ` · Hab. ${esc(i.habitacion)}` : ""}</div>
           <div class="meta">${PLANTILLAS[i.plantilla]} · creada el ${fechaCorta(i.creada)}</div></div>
           <span class="chip ${i.respuestas ? "ok" : "espera"}">${i.respuestas || 0}${i.plazas ? "/" + i.plazas : ""} recibidos</span></div></a>`).join("")}</div>` : ""}
-    ${copias.length ? `<div class="seccion"><div class="tarjeta" style="background:var(--salvia-claro)">
-        <div class="nombre" style="color:#3F4D37">Nuevo año de renta</div>
-        <div class="meta" style="color:#3F4D37">${copias.map(x => `${esc(x.c.pisoNombre)} → Renta ${x.faltan.join(", ")}`).join(" · ")}</div>
-        <button class="btn salvia" id="copias">Copiar contratos de larga duración</button></div></div>` : ""}
     ${enFirma.length ? `<div class="titulo-seccion"><h2>En firma</h2></div>
       <div class="seccion">${enFirma.map(c => `
         <a class="tarjeta" href="#/contrato/${c.id}"><div class="fila"><div>
           <div class="nombre">${esc(c.inquilinos.join(", "))}</div><div class="meta">${esc(c.pisoNombre)} · ${esc(c.curso)}</div></div>
           <span class="chip ${c.nFirmas === c.firmantes.length ? "ok" : "firma"}">${c.nFirmas === c.firmantes.length ? "Listo para guardar" : `${c.nFirmas}/${c.firmantes.length} firmas`}</span></div></a>`).join("")}</div>` : ""}
+    ${avisos.length || copias.length ? `<div class="titulo-seccion"><h2>Avisos</h2></div><div class="seccion">${avisos.join("")}
+      ${copias.length ? `<div class="tarjeta" style="background:var(--salvia-claro)">
+        <div class="nombre" style="color:#3F4D37">Copia de contratos para la Renta</div>
+        <div class="meta" style="color:#3F4D37">Los contratos de vivienda habitual siguen vigentes varios años. Para que estén también en la carpeta de cada declaración, la app guarda una copia en: ${copias.map(x => `${esc(x.c.pisoNombre)} → Renta ${x.faltan.join(", ")}`).join(" · ")}</div>
+        <button class="btn salvia" id="copias">Guardar las copias en Drive</button></div>` : ""}</div>` : ""}
     <div class="titulo-seccion"><h2>Tus pisos</h2><a href="#/pisos" style="font-size:13px;text-decoration:none">Ver todos</a></div>
     <div class="seccion">
-      ${pisos.length ? pisos.map(p => `
-        <a class="tarjeta" href="#/piso/${p.id}"><div class="fila"><div>
-          <div class="nombre">${esc(p.nombre)}</div><div class="meta">${PLANTILLAS[p.plantilla] || ""} · ${esc(p.ciudad || "")}</div></div>
-          ${estadoPiso(p)}</div></a>`).join("")
+      ${pisos.length ? pisos.map(p => {
+        const d = porPiso[p.id];
+        return `<a class="tarjeta" href="#/piso/${p.id}"><div class="fila"><div>
+          <div class="nombre">${esc(p.nombre)}</div>
+          <div class="meta">${PLANTILLAS[p.plantilla] || ""} · ${d.total > 1 ? `${d.llenas}/${d.total} habitaciones` : d.llenas ? "alquilado" : "libre"}${d.x.inversion ? ` · ${d.x.flujoMes < 0 ? "−" : ""}${fmt(Math.abs(d.x.flujoMes))}/mes` : ""}</div></div>
+          ${estadoPiso(p)}</div></a>`;
+      }).join("")
       : `<div class="vacio">Todavía no hay pisos. Empieza por <a href="#/ajustes">tus datos</a> y luego <a href="#/piso/nuevo">añade un piso</a>.</div>`}
     </div>
     <div class="acciones"><a class="btn primario ancho" href="#/nuevo">${ICO.mas} Nuevo inquilino</a></div>
@@ -1983,8 +2029,29 @@ async function vistaFacturas() {
 
 // ============ finanzas: rentabilidad, renta y simulador ============
 
+const INFO_RENTABILIDAD = `<div class="tarjeta" style="gap:8px;font-size:13.5px;line-height:1.5">
+  <div><b>Rentabilidad bruta.</b> Lo que cobras de alquiler en un año dividido entre todo lo que te costó el piso (precio, gastos de compra, reformas y muebles). No resta ningún gasto. Sirve para comparar pisos rápidamente.</div>
+  <div><b>Rentabilidad neta.</b> Igual, pero restando antes los gastos del año: IBI, comunidad, seguros, suministros que pagas tú, reparaciones y otros. No incluye la hipoteca ni los impuestos. Es la que mejor dice cuánto rinde el piso en sí.</div>
+  <div><b>Sobre tu dinero.</b> El flujo de caja del año (lo que te queda después de gastos y de la cuota de la hipoteca) dividido entre el dinero que pusiste tú (lo invertido menos el préstamo). Mide cuánto rinde tu dinero gracias a la financiación.</div>
+  <div><b>Flujo de caja.</b> Lo que entra menos lo que sale cada mes, contando la cuota entera de la hipoteca. Si es negativo, pones dinero de tu bolsillo cada mes.</div>
+  <div class="ayuda">Todas son antes del impuesto sobre la renta.</div></div>`;
+const infoBoton = (titulo, contenido) => `<div class="fila-info"><span class="eti-campo" style="margin:0">${titulo}</span>
+  <button type="button" class="btn-info" data-toggle-info aria-label="Qué significa">i</button></div><div style="display:none">${contenido}</div>`;
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-toggle-info]");
+  if (b) { const c = b.parentElement.nextElementSibling; c.style.display = c.style.display === "none" ? "" : "none"; }
+});
+
 const pct = (x) => (x === null || x === undefined || !isFinite(x) ? "—" : (x * 100).toLocaleString("es-ES", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + " %");
 const eur0 = (x) => (isFinite(x) ? Math.round(x).toLocaleString("es-ES") + " €" : "—");
+
+const filaOtroGasto = (i, o = {}) => `<div class="rejilla">${campo("Concepto", `e_otro_c${i}`, o.concepto || "", 'placeholder="Gestoría, alarma…"')}${campo("Importe (€/año)", `e_otro_i${i}`, o.importe ?? "", 'inputmode="decimal"')}</div>`;
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-mas-gasto]")) return;
+  const c = document.getElementById("otros-gastos");
+  c.insertAdjacentHTML("beforeend", filaOtroGasto(c.children.length));
+  c.lastElementChild.querySelector("input")?.focus();
+});
 
 /** Campos de la ficha económica del piso (prefijo e_). */
 function camposEconomia(e = {}) {
@@ -2011,7 +2078,8 @@ function camposEconomia(e = {}) {
     <div class="rejilla">${n("Comunidad (€/año)", "e_comunidad", e.comunidad)}${n("Seguro del hogar (€/año)", "e_seguroHogar", e.seguroHogar)}</div>
     <div class="rejilla">${n("Seguro de impago (€/año)", "e_seguroImpago", e.seguroImpago)}${n("Suministros a tu cargo (€/año)", "e_suministros", e.suministros, 'placeholder="Luz, agua, wifi incluidos"')}</div>
     <div class="eti-campo">Otros gastos deducibles (€/año)</div>
-    <div class="seccion" style="padding:0" id="otros-gastos">${otros.map((o, i) => `<div class="rejilla">${campo("Concepto", `e_otro_c${i}`, o.concepto || "", 'placeholder="Gestoría, alarma…"')}${n("Importe (€/año)", `e_otro_i${i}`, o.importe)}</div>`).join("")}</div>
+    <div class="seccion" style="padding:0" id="otros-gastos">${otros.map((o, i) => filaOtroGasto(i, o)).join("")}</div>
+    <button type="button" class="btn fantasma" data-mas-gasto style="align-self:flex-start;min-height:38px">+ Añadir otro gasto</button>
     <label class="campo">Reducción por alquiler de vivienda habitual<select name="e_reduccion">
       ${[[50, "50 % (general, contratos desde el 26-5-2023)"], [60, "60 % (contratos anteriores o con obras de rehabilitación)"], [70, "70 % (inquilino de 18 a 35 años en zona tensionada)"], [90, "90 % (bajada de renta en zona tensionada)"], [0, "Sin reducción"]]
         .map(([v, t]) => `<option value="${v}" ${String(e.reduccion ?? 50) === String(v) ? "selected" : ""}>${t}</option>`).join("")}</select></label>
@@ -2066,6 +2134,7 @@ async function vistaFinanzas(pestaña = "rentabilidad") {
   pintar(`${cabVolver("Finanzas", "Tus pisos en números")}
     ${pestañasFinanzas("rentabilidad")}
     <div class="seccion">
+      ${infoBoton("Tipos de rentabilidad", INFO_RENTABILIDAD)}
       <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));padding:0">
         ${tile(eur0(T.ing / 12), "Ingresos al mes")}${tile(eur0(T.flujo / 12), "Flujo de caja al mes")}
         ${tile(eur0(T.inv), "Invertido")}${tile(pct(T.inv > 0 ? (T.ing - T.gas) / T.inv : null), "Rentabilidad neta")}
@@ -2085,7 +2154,6 @@ async function vistaFinanzas(pestaña = "rentabilidad") {
         ${!x.inversion ? '<p class="ayuda">Añade el precio de compra en «Datos económicos» para ver la rentabilidad.</p>' : ""}
         ${r.estimada ? '<p class="ayuda">* Estimado con la renta de la ficha: no hay contratos en vigor.</p>' : ""}
       </div>`).join("") || '<div class="vacio">Sin pisos todavía.</div>'}
-      <p class="ayuda">Bruta: lo que cobras al año entre lo invertido. Neta: descontando gastos (sin hipoteca). Sobre tu dinero: el flujo de caja (con hipoteca) entre el dinero que pusiste tú.</p>
     </div>`, "finanzas");
 }
 
@@ -2221,6 +2289,7 @@ async function vistaSimulador() {
         <div><span>Recuperas tu dinero en</span><b>${x.recuperacion ? x.recuperacion.toLocaleString("es-ES", { maximumFractionDigits: 1 }) + " años" : "—"}</b></div>
       </div></div>`;
     $("#resultado").innerHTML = `<div class="titulo-seccion" style="padding:0"><h2>Resultado</h2></div>
+      ${infoBoton("Qué significa cada rentabilidad", INFO_RENTABILIDAD)}
       <div class="tarjeta" style="gap:6px"><div class="cifras">
         <div><span>Impuesto de compra (ITP)</span><b>${eur0(entero.impuestos)}</b></div>
         <div><span>Inversión total</span><b>${eur0(entero.inversion)}</b></div>
